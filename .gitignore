@@ -1,4 +1,12 @@
-# Logs
+# --- SEGURIDAD (CRÍTICO) ---
+# Esto evita que se suban tus claves a internet
+.env
+.env.local
+.env.*
+!.env.example
+*.local
+
+# --- LOGS ---
 logs
 *.log
 npm-debug.log*
@@ -7,16 +15,21 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# --- CARPETAS PESADAS Y DEPENDENCIAS ---
+# Esto se descarga con "npm install", no se debe subir
+node_modules/
+dist/
+dist-ssr/
+build/
 
-# Editor directories and files
+# --- ARCHIVOS BASURA DEL SISTEMA ---
+.DS_Store
+Thumbs.db
+
+# --- EDITORES Y CONFIGURACIONES ---
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj

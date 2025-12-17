@@ -1,68 +1,166 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* Reset y variables */
+* { box-sizing: border-box; }
+:root{
+  --bg-start: #001f1f;
+  --bg-end: #004d4d;
+  --panel: rgba(0,40,40,0.75);
+  --accent: #00ffaa;
+  --accent-dark: #007777;
+  --muted: #b0f7e0;
+  --radius: 16px;
+  --shadow: 0 10px 30px rgba(0,0,0,0.45);
+  --font: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+}
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+/* Fondo general */
+html,body,#root { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: linear-gradient(135deg, var(--bg-start), var(--bg-end));
+  color: #fff;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
+/* Centrado del app */
+.app-wrapper {
   min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+/* Contenedor principal */
+.container {
+  width: 100%;
+  max-width: 980px;
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 36px;
+  text-align: center;
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(255,255,255,0.03);
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
+/* Título */
+.title {
+  font-size: 1.9rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--accent);
+  text-shadow: 0 4px 18px rgba(0,255,170,0.14);
+}
+
+/* Subtitulo */
+.subtitle {
+  color: var(--muted);
+  margin-bottom: 28px;
+  font-size: 0.98rem;
+}
+
+/* Input y botón */
+.form-row {
+  display:flex;
+  justify-content:center;
+  gap: 12px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+.mood-input {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: none;
+  outline: none;
+  width: 56%;
+  min-width: 180px;
+  font-size: 1rem;
+  text-align: center;
+  background: rgba(255,255,255,0.03);
+  color: inherit;
+  transition: transform .12s ease;
+}
+
+.mood-input:focus {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45), 0 0 0 4px rgba(0,255,170,0.06);
+  outline: none;
+}
+
+.mood-button {
+  background: linear-gradient(180deg, #00ffaa, #00ddbb);
+  color: #003333;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 20px;
   cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  font-weight: 700;
+  min-width: 110px;
+  transition: transform .14s ease, opacity .14s ease;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+.mood-button:hover,
+.mood-button:focus {
+  transform: translateY(-3px);
+  opacity: 0.98;
+}
+
+/* Mood options */
+.mood-options {
+  margin-top: 20px;
+  display:flex;
+  justify-content:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.mood-option-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent-dark);
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform .12s ease, background .12s;
+}
+
+.mood-option-btn:hover,
+.mood-option-btn:focus {
+  background: var(--accent);
+  color: #003333;
+  transform: translateY(-2px);
+}
+
+/* Playlist / resultados */
+.playlist-section {
+  margin-top: 28px;
+  background: rgba(0,0,0,0.28);
+  padding: 18px;
+  border-radius: 12px;
+}
+
+/* Footer pequeño */
+footer {
+  margin-top: 22px;
+  font-size: 0.82rem;
+  color: #66cccc;
+}
+
+/* Visually hidden (para accesibilidad) */
+.sr-only {
+  position: absolute !important;
+  height: 1px; width: 1px;
+  overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px);
+  white-space: nowrap;
+}
+
+/* Responsive */
+@media (max-width: 640px){
+  .mood-input { width: 100%; }
+  .form-row { gap: 8px; }
+  .container { padding: 22px; border-radius: 12px; }
 }
