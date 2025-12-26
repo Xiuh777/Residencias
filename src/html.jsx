@@ -177,10 +177,31 @@ export default function Html() {
     historyBg: darkMode ? '#2a2a2a' : '#fff'
   };
 
+  // --- MODIFICACIÓN RESPONSIVA: Separe los estilos de layout de los estilos visuales ---
   const styles = {
-    pageContainer: { minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: `radial-gradient(circle at top left, ${bgColor} 0%, ${theme.bgGradient} 80%)`, padding: '20px', boxSizing: 'border-box', transition: 'background 1.5s ease', color: theme.text },
-    heroContainer: { display: 'flex', flexDirection: 'row', maxWidth: '1100px', width: '100%', height: '85vh', maxHeight: '750px', background: theme.heroBg, backdropFilter: 'blur(20px)', borderRadius: '24px', border: `1px solid ${bgColor}40`, boxShadow: `0 20px 60px ${theme.shadow}, 0 0 30px ${bgColor}20`, overflow: 'hidden', transition: 'border-color 1.5s ease, box-shadow 1.5s ease, background 0.5s' },
-    rightSection: { flex: 1.2, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden', background: `linear-gradient(to bottom right, ${bgColor}60, ${theme.rightSectionOverlay}), url('https://source.unsplash.com/random/800x800/?abstract,music') center/cover no-repeat`, transition: 'background 1.5s ease' },
+    // Layout movido a CSS (.page-container)
+    pageContainer: { 
+        minHeight: '100vh', 
+        background: `radial-gradient(circle at top left, ${bgColor} 0%, ${theme.bgGradient} 80%)`, 
+        color: theme.text,
+        transition: 'background 1.5s ease'
+    },
+    // Layout movido a CSS (.hero-container)
+    heroContainer: { 
+        background: theme.heroBg, 
+        backdropFilter: 'blur(20px)', 
+        borderRadius: '24px', 
+        border: `1px solid ${bgColor}40`, 
+        boxShadow: `0 20px 60px ${theme.shadow}, 0 0 30px ${bgColor}20`, 
+        transition: 'border-color 1.5s ease, box-shadow 1.5s ease, background 0.5s' 
+    },
+    // Layout movido a CSS (.right-section)
+    rightSection: { 
+        background: `linear-gradient(to bottom right, ${bgColor}60, ${theme.rightSectionOverlay}), url('https://source.unsplash.com/random/800x800/?abstract,music') center/cover no-repeat`, 
+        transition: 'background 1.5s ease',
+        position: 'relative', 
+        overflow: 'hidden' 
+    },
     loaderContainer: { display: 'flex', gap: '4px', justifyContent: 'center', margin: '30px 0' },
     bar: (delay) => ({ width: '5px', height: '15px', backgroundColor: '#00FF88', borderRadius: '10px', animation: `dance 1s infinite ease-in-out ${delay}s` }),
     diceBtn: { background: theme.inputBg, border: `1px solid ${theme.borderColor}`, borderRadius: '15px', color: theme.subText, padding: '6px 12px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', marginLeft: 'auto', marginBottom: '15px', transition: '0.2s' },
@@ -213,7 +234,7 @@ export default function Html() {
   const renderEmptyState = () => (<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: darkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)', textAlign: 'center', padding: '20px' }}><div style={{ fontSize: '2.5rem', marginBottom: '10px', opacity: 0.3 }}>🎵</div><h3 style={{ fontSize: '1.1rem', fontWeight: '300', marginBottom: '5px', color: theme.text }}>Tu música te espera</h3><p style={{ fontSize: '0.85rem', color: theme.subText }}>Escribe, habla o sube una foto.</p></div>);
 
   return (
-    <div style={styles.pageContainer}>
+    <div className="page-container" style={styles.pageContainer}>
         {showToast && <div style={styles.toast}>{toastMessage}</div>}
         
         <button onClick={() => setShowQueue(!showQueue)} style={styles.queueBtn}>🎵 Cola ({queue.length})</button>
@@ -238,7 +259,7 @@ export default function Html() {
             ))}
         </div>
 
-        <div style={styles.heroContainer} className="hero-responsive">
+        <div className="hero-container" style={styles.heroContainer}>
             <div className="left-section">
                 <div style={{ fontSize: '0.8rem', color: bgColor, fontWeight: '600', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '1px', filter: darkMode ? 'brightness(1.5)' : 'brightness(0.9)' }}>{greeting}</div>
                 <h1 className="main-title">Tam IA</h1>
@@ -292,7 +313,7 @@ export default function Html() {
                 <div className="footer-info"><span>© 2025 Tam IA</span><span>Gemini • Spotify</span></div>
             </div>
 
-            <div style={styles.rightSection} className="right-section-responsive">
+            <div className="right-section" style={styles.rightSection}>
                 <div className="results-overlay">
                     {loading && renderLoader()}
                     {!loading && aiInterpretation && mode === "mood" && <div style={{marginTop:'15px',textAlign:'center'}}><span style={styles.aiText}>🤖 {aiInterpretation}</span></div>}
@@ -348,7 +369,43 @@ export default function Html() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
         body { margin: 0; font-family: 'Poppins', sans-serif; background: ${darkMode ? '#000' : '#f0f2f5'}; overflow-x: hidden; color: ${darkMode ? '#fff' : '#222'}; transition: background 0.3s; }
-        .left-section { flex: 1; padding: 30px; display: flex; flex-direction: column; justify-content: center; z-index: 2; min-width: 300px; }
+        
+        /* Estilos Base (Desktop) movidos aquí para permitir overrides */
+        .page-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .hero-container {
+            display: flex;
+            flex-direction: row;
+            max-width: 1100px;
+            width: 100%;
+            height: 85vh;
+            max-height: 750px;
+            overflow: hidden;
+        }
+
+        .left-section { 
+            flex: 1; 
+            padding: 30px; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            z-index: 2; 
+            min-width: 300px; 
+        }
+
+        .right-section {
+            flex: 1.2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
         .results-overlay { background: ${darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.6)'}; backdrop-filter: blur(10px); width: 100%; height: 100%; padding: 20px; overflow-y: auto; box-sizing: border-box; padding-bottom: 80px; }
         .main-title { font-size: clamp(2rem, 3.5vw, 3rem); font-weight: 800; margin-bottom: 10px; line-height: 1.1; background: linear-gradient(to right, #00FF88, #8A2BE2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .tab-container { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 15px; }
@@ -361,15 +418,48 @@ export default function Html() {
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .pulse { animation: dance 1s infinite; }
 
+        /* DISEÑO RESPONSIVO CORREGIDO */
         @media (max-width: 850px) {
-            .hero-responsive { flex-direction: column; height: auto !important; max-height: none !important; margin-top: 10px; margin-bottom: 10px; }
-            .left-section { padding: 25px 20px; min-height: auto; width: 100%; box-sizing: border-box; }
-            .right-section-responsive { min-height: 500px; width: 100%; }
+            .page-container {
+                padding: 10px;
+                align-items: flex-start;
+                height: auto;
+                min-height: 100vh;
+            }
+
+            .hero-container { 
+                flex-direction: column !important; 
+                height: auto !important; 
+                max-height: none !important; 
+                overflow: visible;
+                margin-top: 20px;
+                margin-bottom: 80px; /* Espacio para el player */
+            }
+
+            .left-section { 
+                padding: 25px 20px; 
+                min-height: auto; 
+                width: 100%; 
+                box-sizing: border-box; 
+                min-width: 0; /* Fix flexbox overflow */
+            }
+
+            .right-section { 
+                min-height: 500px; 
+                width: 100%; 
+                border-top: 1px solid rgba(255,255,255,0.1);
+            }
+
             .main-title, .subtitle { text-align: center; margin-left: auto; margin-right: auto; }
             .tab-container { justify-content: center; }
             .search-form { max-width: 100%; }
             .diceBtn { margin-right: auto; margin-left: 0; }
-            .queue-container { width: 85% !important; }
+            
+            /* Ajuste de la cola en móvil */
+            .queue-container { width: 85% !important; max-width: 300px; }
+            
+            /* Ajuste de botones en móvil */
+            .flagGrid { grid-template-columns: repeat(3, 1fr) !important; }
         }
         
         ::-webkit-scrollbar { width: 5px; }

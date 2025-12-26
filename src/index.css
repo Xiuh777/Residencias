@@ -158,9 +158,49 @@ footer {
   white-space: nowrap;
 }
 
-/* Responsive */
+/* --- ADAPTACIÓN RESPONSIVA (Mobile) --- */
 @media (max-width: 640px){
-  .mood-input { width: 100%; }
-  .form-row { gap: 8px; }
-  .container { padding: 22px; border-radius: 12px; }
+  /* Reducimos el padding externo para aprovechar pantalla */
+  .app-wrapper {
+    padding: 16px;
+  }
+
+  /* Ajustamos el contenedor interno */
+  .container {
+    padding: 24px 20px; 
+    border-radius: 12px;
+  }
+
+  /* Título un poco más pequeño */
+  .title {
+    font-size: 1.6rem;
+  }
+
+  /* En móvil, apilamos el input y el botón verticalmente */
+  .form-row {
+    flex-direction: column;
+    width: 100%;
+    gap: 12px;
+  }
+
+  /* Hacemos que ocupen todo el ancho disponible para facilitar el toque */
+  .mood-input { 
+    width: 100%; 
+    font-size: 16px; /* Evita zoom automático en iPhone */
+  }
+  
+  .mood-button {
+    width: 100%;
+    padding: 14px;
+  }
+
+  /* Ajuste de botones de opciones */
+  .mood-options {
+    gap: 6px;
+  }
+  
+  .mood-option-btn {
+    flex: 1 1 auto; /* Permite que se ajusten al ancho */
+    font-size: 0.9rem;
+  }
 }
