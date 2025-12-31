@@ -1,5 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
-import { searchPlaylistsByMood, searchArtistsAndTracks, searchGlobalTop, analyzeImageAndSearch, searchTracks } from "./spotify";
+
+// URL de tu servidor backend real (index.js)
+const API_URL = "http://localhost:5000"; 
+
+// Helper para mezclar (Shuffle) las canciones
+const shuffleArray = (array) => {
+  const newArray = [...array];
+  for (let i = newArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  }
+  return newArray;
+};
 
 export default function Html() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -16,6 +28,9 @@ export default function Html() {
   const [favorites, setFavorites] = useState([]);
   const [queue, setQueue] = useState([]);
   const [showQueue, setShowQueue] = useState(false);
+  
+  // Estado para el Token real de Spotify
+  const [spotifyToken, setSpotifyToken] = useState("");
 
   const [isListening, setIsListening] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -30,7 +45,6 @@ export default function Html() {
 
   const countries = [ { code: "MX", name: "México", flag: "🇲🇽" }, { code: "ES", name: "España", flag: "🇪🇸" }, { code: "US", name: "USA", flag: "🇺🇸" }, { code: "BR", name: "Brasil", flag: "🇧🇷" }, { code: "KR", name: "Corea", flag: "🇰🇷" }, { code: "JP", name: "Japón", flag: "🇯🇵" }, { code: "CO", name: "Colombia", flag: "🇨🇴" }, { code: "AR", name: "Argentina", flag: "🇦🇷" } ];
 
-  // --- LISTA GIGANTE DE PROMPTS ALEATORIOS ---
   const randomPrompts = [
     "Ciberpunk hacker a las 3 AM", "Cena romántica italiana con vino", "Entrenamiento bestial modo bestia", 
     "Domingo de limpieza con energía", "Lluvia melancólica en la ventana", "Roadtrip por la costa de California", 
@@ -44,7 +58,23 @@ export default function Html() {
     "Amor a primera vista en el metro", "Soledad en una estación espacial", "Rave en un búnker subterráneo"
   ];
 
+  // --- 1. CARGA INICIAL Y TOKEN ---
   useEffect(() => {
+    // Obtener Token REAL de tu backend
+    const getToken = async () => {
+        try {
+            const res = await fetch(`${API_URL}/api/token`);
+            if (!res.ok) throw new Error("Error conectando con backend");
+            const data = await res.json();
+            setSpotifyToken(data.token);
+            console.log("✅ Conectado a Spotify API");
+        } catch (e) {
+            console.error("Error obteniendo token:", e);
+            setError("No se pudo conectar al servidor. Revisa que 'node index.js' esté corriendo.");
+        }
+    };
+    getToken();
+
     const savedHistory = JSON.parse(localStorage.getItem("musicHistory")) || [];
     setHistory(savedHistory);
     const savedFavorites = JSON.parse(localStorage.getItem("musicFavorites")) || [];
@@ -62,6 +92,147 @@ export default function Html() {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
+  // --- 2. FUNCIONES DE CONEXIÓN A SPOTIFY (INTERNAS) ---
+  const searchSpotifyTracks = async (query, limit = 10) => {
+      if (!spotifyToken) return [];
+      try {
+          const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=${limit}`, {
+              headers: { Authorization: `Bearer ${spotifyToken}` }
+          });
+          const data = await res.json();
+          if (!data.tracks) return [];
+          
+          return data.tracks.items.map(track => ({
+              id: track.id,
+              name: track.name,
+              artist: track.artists[0].name,
+              albumImage: track.album.images[0]?.url,
+              previewUrl: track.preview_url,
+              externalUrl: track.external_urls.spotify,
+              type: 'track'
+          }));
+      } catch (e) {
+          console.error("Error en Spotify Search:", e);
+          return [];
+      }
+  };
+
+  const searchSpotifyArtist = async (query) => {
+      if (!spotifyToken) return null;
+      try {
+          const resArtist = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=1`, {
+              headers: { Authorization: `Bearer ${spotifyToken}` }
+          });
+          const dataArtist = await resArtist.json();
+          const artist = dataArtist.artists?.items[0];
+          if (!artist) return null;
+
+          const resTracks = await fetch(`https://api.spotify.com/v1/artists/${artist.id}/top-tracks?market=US`, {
+              headers: { Authorization: `Bearer ${spotifyToken}` }
+          });
+          const dataTracks = await resTracks.json();
+          
+          return {
+              artistName: artist.name,
+              tracks: dataTracks.tracks.map(track => ({
+                  id: track.id,
+                  name: track.name,
+                  artist: track.artists[0].name,
+                  albumImage: track.album.images[0]?.url,
+                  previewUrl: track.preview_url,
+                  externalUrl: track.external_urls.spotify,
+                  type: 'track'
+              }))
+          };
+      } catch (e) {
+          console.error("Error buscando artista:", e);
+          return null;
+      }
+  };
+
+  // --- 3. LÓGICA PRINCIPAL (PERFORM SEARCH) ---
+  const performSearch = async (term) => {
+    if (!spotifyToken) { setError("Esperando conexión con Spotify..."); return; }
+    
+    setLoading(true); setError(""); setPlaylistResult([]); setTrackResult([]); setArtistResult(null); setSearchTerm(term);
+    setShowHistory(false);
+    
+    if (mode === "favorites" || mode === "travel") setMode("mood");
+
+    try {
+        // A) MODO ARTISTA
+        if (mode === "artist") {
+            const data = await searchSpotifyArtist(term);
+            if (data) {
+                setArtistResult(data);
+                addToHistory(term);
+            } else { setError(`No encontré al artista: ${term}`); }
+            setLoading(false);
+            return;
+        }
+
+        // B) MODO CANCIÓN
+        if (mode === "song") {
+            const tracks = await searchSpotifyTracks(term, 20);
+            if (tracks.length > 0) {
+                setTrackResult(tracks);
+                addToHistory(term);
+            } else { setError("Canción no encontrada."); }
+            setLoading(false);
+            return;
+        }
+
+        // C) MODO MOOD / MIX (La magia de la IA)
+        // 1. Pedimos la receta al backend
+        const aiRes = await fetch(`${API_URL}/api/ai-recommendation`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ userPrompt: term })
+        });
+        
+        if (!aiRes.ok) throw new Error("Error en la IA del servidor");
+        const aiData = await aiRes.json();
+        
+        // Obtenemos la lista de búsquedas (Smart Mix)
+        const queries = aiData.queries || [term];
+        const mixColor = aiData.hexColor || "#1a1a1a";
+        const mixMessage = aiData.aiMessage || "Resultado";
+
+        setBgColor(mixColor);
+        setAiInterpretation(mixMessage);
+
+        // 2. Buscamos CADA ingrediente en Spotify (Paralelo)
+        // Pedimos 5 canciones por cada término para tener variedad sin saturar
+        const searchPromises = queries.map(q => searchSpotifyTracks(q, 6)); 
+        const resultsArray = await Promise.all(searchPromises);
+        
+        // 3. Juntamos todo en una sola lista
+        let allTracks = [];
+        resultsArray.forEach(tracks => {
+            allTracks = [...allTracks, ...tracks];
+        });
+
+        // 4. Mezclamos (Shuffle) para que sea un mix real
+        const mixedPlaylist = shuffleArray(allTracks);
+
+        if (mixedPlaylist.length > 0) {
+            setPlaylistResult(mixedPlaylist);
+            addToHistory(term);
+        } else {
+            setError("No encontré canciones para esta mezcla.");
+        }
+
+    } catch (err) { 
+        console.error(err);
+        setError("Error: Revisa que tu servidor backend esté corriendo (puerto 5000)."); 
+    } finally { 
+        setLoading(false); 
+    }
+  };
+
+  const handleSearch = (e) => { e.preventDefault(); if(searchTerm.trim()) performSearch(searchTerm); };
+  
+  // Helpers de UI
   const addToQueue = (e, item) => {
     e.stopPropagation();
     const newQueue = [...queue, item];
@@ -79,72 +250,49 @@ export default function Html() {
   };
   const closePlayer = () => { if(audioRef.current) audioRef.current.pause(); setCurrentTrack(null); };
 
-  // --- LÓGICA DE FOTOS (AQUÍ OCURRE LA MAGIA) ---
+  // Manejo de imagen (Visión)
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setLoading(true);
-    setSearchTerm("Analizando imagen... 📸"); // Feedback visual
+    setSearchTerm("Analizando imagen... 📸"); 
+    
     const reader = new FileReader();
     reader.onloadend = async () => {
         try {
-            // Enviamos la imagen (reader.result es el Base64) al backend
-            const result = await analyzeImageAndSearch(reader.result);
-            if (result) {
-                setMode("mood"); 
-                setPlaylistResult(result.items); 
-                setAiInterpretation(result.aiInterpretation); // Descripción de la IA
-                if (result.moodColor) setBgColor(result.moodColor); // Color extraído
-                addToHistory("📸 Búsqueda Visual");
-                setSearchTerm(""); // Limpiar
-            } else { setError("No pude entender la imagen."); }
-        } catch (err) { setError("Error al analizar imagen."); } finally { setLoading(false); }
+            const res = await fetch(`${API_URL}/api/ai-vision`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ imageBase64: reader.result })
+            });
+            if (!res.ok) throw new Error("Error en visión");
+            const aiData = await res.json();
+            
+            // Usamos la misma lógica de mix para la imagen
+            const queries = aiData.queries || ["Pop"];
+            setBgColor(aiData.hexColor || "#1a1a1a");
+            setAiInterpretation(aiData.aiMessage || "Vibe visual");
+            
+            const searchPromises = queries.map(q => searchSpotifyTracks(q, 6));
+            const resultsArray = await Promise.all(searchPromises);
+            let allTracks = [];
+            resultsArray.forEach(tracks => allTracks = [...allTracks, ...tracks]);
+            
+            setPlaylistResult(shuffleArray(allTracks));
+            setMode("mood");
+            addToHistory("📸 Búsqueda Visual");
+            setSearchTerm("");
+
+        } catch (e) { 
+            console.error(e);
+            setError("Error analizando imagen."); 
+        } finally {
+            setLoading(false);
+        }
     };
     reader.readAsDataURL(file);
   };
 
-  const handleCountrySelect = async (country) => {
-    setLoading(true); setMode("travel"); setSearchTerm(`Top ${country.name}`);
-    try {
-        const { items, moodColor } = await searchGlobalTop(country.name);
-        setPlaylistResult(items); setAiInterpretation(`Explorando ${country.name} ${country.flag}`); setBgColor(moodColor);
-    } catch (err) { setError("Error viajando."); } finally { setLoading(false); }
-  };
-
-  const performSearch = async (term) => {
-    setLoading(true); setError(""); setPlaylistResult([]); setTrackResult([]); setAiInterpretation(""); setArtistResult(null); setSearchTerm(term);
-    setShowHistory(false);
-    
-    if (mode === "favorites" || mode === "travel") setMode("mood");
-    
-    try {
-      if (mode === "artist") {
-        setBgColor(darkMode ? "#1a1a1a" : "#ffffff");
-        const data = await searchArtistsAndTracks(term);
-        if (data.tracks.length > 0) { setArtistResult(data); addToHistory(term); } 
-        else { setError(`No encontramos a ${data.artistName}.`); }
-      } else if (mode === "song") {
-        setBgColor(darkMode ? "#1a1a1a" : "#ffffff");
-        const data = await searchTracks(term);
-        if (data.tracks.length > 0) { setTrackResult(data.tracks); addToHistory(term); }
-        else { setError("No encontramos esa canción."); }
-      } else {
-        const { items, aiTerms, moodColor } = await searchPlaylistsByMood(term);
-        if (moodColor) setBgColor(moodColor);
-        if (aiTerms && aiTerms.toLowerCase() !== term.toLowerCase()) setAiInterpretation(aiTerms);
-        if (items.length > 0) { setPlaylistResult(items); addToHistory(term); } 
-        else { setError("No encontramos playlists."); }
-      }
-    } catch (err) { setError("Error de conexión."); } finally { setLoading(false); }
-  };
-
-  const handleSearch = (e) => { e.preventDefault(); if(searchTerm.trim()) performSearch(searchTerm); };
-  const toggleFavorite = (e, item, type) => {
-    e.stopPropagation(); e.preventDefault();
-    const exists = favorites.find(fav => fav.id === item.id);
-    let newFavs = exists ? favorites.filter(fav => fav.id !== item.id) : [...favorites, { ...item, type }];
-    setFavorites(newFavs); localStorage.setItem("musicFavorites", JSON.stringify(newFavs));
-  };
   const addToHistory = (term) => {
     let newHistory = [term, ...history.filter(t => t !== term)].slice(0, 5);
     setHistory(newHistory); localStorage.setItem("musicHistory", JSON.stringify(newHistory));
@@ -164,6 +312,18 @@ export default function Html() {
     recognition.start();
   };
 
+  const handleCountrySelect = async (country) => {
+    setLoading(true); setMode("travel"); setSearchTerm(`Top ${country.name}`);
+    // Búsqueda directa del top
+    try {
+       const tracks = await searchSpotifyTracks(`Top 50 ${country.name}`, 20);
+       setPlaylistResult(tracks);
+       setAiInterpretation(`Explorando ${country.name} ${country.flag}`);
+       setBgColor("#1DB954");
+    } catch(e) { setError("Error viajando."); }
+    setLoading(false);
+  };
+
   const theme = {
     text: darkMode ? '#fff' : '#222',
     subText: darkMode ? '#e0e0e0' : '#555',
@@ -177,7 +337,6 @@ export default function Html() {
     historyBg: darkMode ? '#2a2a2a' : '#fff'
   };
 
-  // --- MODIFICACIÓN RESPONSIVA: Separe los estilos de layout de los estilos visuales ---
   const styles = {
     // Layout movido a CSS (.page-container)
     pageContainer: { 

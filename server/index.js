@@ -18,8 +18,6 @@ app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 const PORT = process.env.PORT || 5000;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-
 const MODEL_NAME = "gemini-2.5-flash"; 
 
 const safetySettings = [
@@ -41,39 +39,41 @@ app.get("/api/token", async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+// --- LÓGICA DE MEZCLA INTELIGENTE ---
 app.post("/api/ai-recommendation", async (req, res) => {
   const { userPrompt } = req.body;
   
   try {
-    // Usamos la constante MODEL_NAME para asegurar que sea la 2.5 esto para la IA
     const model = genAI.getGenerativeModel({ model: MODEL_NAME, safetySettings }); 
 
+    // Prompt actualizado para separar géneros
     const prompt = `
-      Eres un experto musical. El usuario busca: "${userPrompt}".
-      IMPORTANTE:
-      - Si es jerga (ej: bellakeo, perreo), asócialo a Reggaeton, Urbano, Dembow.
-      - Si es actividad (ej: minar minecraft), asócialo a Ambient, C418, Synthwave.
+      Eres un DJ experto. El usuario quiere un mix: "${userPrompt}".
       
-      Responde SOLO este JSON (sin markdown): 
-      {"searchTerms": "3 géneros o artistas en INGLÉS separados por comas", "hexColor": "#COLOR_HEX_VIBRANTE"}
+      TAREA:
+      1. Identifica los diferentes géneros, artistas o moods.
+      2. Sepáralos en una lista de términos de búsqueda para Spotify.
+      3. Si usa jerga (ej: "bellakeo"), tradúcelo (ej: "Reggaeton Old School").
+      
+      Responde SOLO este JSON: 
+      {
+        "queries": ["Busqueda1", "Busqueda2", "Busqueda3"], 
+        "hexColor": "#COLOR_HEX_VIBRANTE",
+        "aiMessage": "Frase corta describiendo el mix"
+      }
     `;
 
     const result = await model.generateContent(prompt);
     const text = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
     const data = JSON.parse(text);
     
-    console.log(`✅ IA Conectada (${MODEL_NAME}): ${data.searchTerms}`);
+    console.log(`✅ Mix Generado para "${userPrompt}":`, data.queries);
     res.json(data);
 
   } catch (error) {
-    console.error("❌ Error IA (Usando Fallback):", error.message);
-    
-    // Fallback por si acaso
-    let cleanTerm = userPrompt;
-    if (userPrompt.toLowerCase().includes("minecraft")) cleanTerm = "Minecraft Soundtrack";
-    if (userPrompt.toLowerCase().includes("bellakeo")) cleanTerm = "Reggaeton Old School";
-    
-    res.json({ searchTerms: cleanTerm, hexColor: "#1db954" }); 
+    console.error("❌ Error IA (Fallback):", error.message);
+    // Si falla, devolvemos la búsqueda original tal cual
+    res.json({ queries: [userPrompt], hexColor: "#1db954", aiMessage: "Buscando tu música..." }); 
   }
 });
 
@@ -81,7 +81,8 @@ app.post("/api/ai-vision", async (req, res) => {
   const { imageBase64 } = req.body;
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME, safetySettings });
-    const prompt = `Analiza la imagen. Responde SOLO JSON: {"moodDescription": "Descripción", "searchTerms": "3 géneros", "hexColor": "#COLOR"}`;
+    // También actualizamos la visión para devolver una lista
+    const prompt = `Analiza la imagen. Responde SOLO JSON: {"queries": ["género1", "género2"], "hexColor": "#COLOR", "aiMessage": "Vibe detectada"}`;
     const imagePart = { inlineData: { data: imageBase64.split(",")[1], mimeType: "image/jpeg" } };
     const result = await model.generateContent([prompt, imagePart]);
     const text = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
