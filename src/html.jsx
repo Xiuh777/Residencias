@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 
-// URL de tu servidor backend real (index.js)
-const API_URL = "http://localhost:5000"; 
+// --- CONFIGURACIÓN DEL SERVIDOR ---
+const PROD_URL = "https://residencias-lac.vercel.app/"; 
 
-// Helper para mezclar (Shuffle) las canciones
+// Esta lógica usa localhost si estás en tu PC, y la URL real 
+const API_URL = window.location.hostname === "localhost" 
+    ? "http://localhost:5000" 
+    : PROD_URL;
+
+// --- HELPER: Mezclar array (Shuffle) ---
 const shuffleArray = (array) => {
   const newArray = [...array];
   for (let i = newArray.length - 1; i > 0; i--) {
@@ -63,14 +68,15 @@ export default function Html() {
     // Obtener Token REAL de tu backend
     const getToken = async () => {
         try {
+            console.log(`📡 Conectando a: ${API_URL}`); // Para depuración
             const res = await fetch(`${API_URL}/api/token`);
-            if (!res.ok) throw new Error("Error conectando con backend");
+            if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
             const data = await res.json();
             setSpotifyToken(data.token);
             console.log("✅ Conectado a Spotify API");
         } catch (e) {
             console.error("Error obteniendo token:", e);
-            setError("No se pudo conectar al servidor. Revisa que 'node index.js' esté corriendo.");
+            setError(`No se pudo conectar al servidor en ${API_URL}. Revisa la URL.`);
         }
     };
     getToken();
@@ -183,7 +189,7 @@ export default function Html() {
         }
 
         // C) MODO MOOD / MIX (La magia de la IA)
-        // 1. Pedimos la receta al backend
+        // 1. Pedimos la receta al backend usando API_URL dinámica
         const aiRes = await fetch(`${API_URL}/api/ai-recommendation`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -202,7 +208,6 @@ export default function Html() {
         setAiInterpretation(mixMessage);
 
         // 2. Buscamos CADA ingrediente en Spotify (Paralelo)
-        // Pedimos 5 canciones por cada término para tener variedad sin saturar
         const searchPromises = queries.map(q => searchSpotifyTracks(q, 6)); 
         const resultsArray = await Promise.all(searchPromises);
         
@@ -224,7 +229,7 @@ export default function Html() {
 
     } catch (err) { 
         console.error(err);
-        setError("Error: Revisa que tu servidor backend esté corriendo (puerto 5000)."); 
+        setError(`Error de conexión con ${API_URL}. Revisa la consola.`); 
     } finally { 
         setLoading(false); 
     }
@@ -314,7 +319,6 @@ export default function Html() {
 
   const handleCountrySelect = async (country) => {
     setLoading(true); setMode("travel"); setSearchTerm(`Top ${country.name}`);
-    // Búsqueda directa del top
     try {
        const tracks = await searchSpotifyTracks(`Top 50 ${country.name}`, 20);
        setPlaylistResult(tracks);
@@ -338,29 +342,9 @@ export default function Html() {
   };
 
   const styles = {
-    // Layout movido a CSS (.page-container)
-    pageContainer: { 
-        minHeight: '100vh', 
-        background: `radial-gradient(circle at top left, ${bgColor} 0%, ${theme.bgGradient} 80%)`, 
-        color: theme.text,
-        transition: 'background 1.5s ease'
-    },
-    // Layout movido a CSS (.hero-container)
-    heroContainer: { 
-        background: theme.heroBg, 
-        backdropFilter: 'blur(20px)', 
-        borderRadius: '24px', 
-        border: `1px solid ${bgColor}40`, 
-        boxShadow: `0 20px 60px ${theme.shadow}, 0 0 30px ${bgColor}20`, 
-        transition: 'border-color 1.5s ease, box-shadow 1.5s ease, background 0.5s' 
-    },
-    // Layout movido a CSS (.right-section)
-    rightSection: { 
-        background: `linear-gradient(to bottom right, ${bgColor}60, ${theme.rightSectionOverlay}), url('https://source.unsplash.com/random/800x800/?abstract,music') center/cover no-repeat`, 
-        transition: 'background 1.5s ease',
-        position: 'relative', 
-        overflow: 'hidden' 
-    },
+    pageContainer: { minHeight: '100vh', background: `radial-gradient(circle at top left, ${bgColor} 0%, ${theme.bgGradient} 80%)`, color: theme.text, transition: 'background 1.5s ease', padding: '20px', display: 'flex', justifyContent: 'center' },
+    heroContainer: { background: theme.heroBg, backdropFilter: 'blur(20px)', borderRadius: '24px', border: `1px solid ${bgColor}40`, boxShadow: `0 20px 60px ${theme.shadow}, 0 0 30px ${bgColor}20`, transition: 'border-color 1.5s ease, box-shadow 1.5s ease, background 0.5s' },
+    rightSection: { background: `linear-gradient(to bottom right, ${bgColor}60, ${theme.rightSectionOverlay}), url('https://source.unsplash.com/random/800x800/?abstract,music') center/cover no-repeat`, transition: 'background 1.5s ease', position: 'relative', overflow: 'hidden' },
     loaderContainer: { display: 'flex', gap: '4px', justifyContent: 'center', margin: '30px 0' },
     bar: (delay) => ({ width: '5px', height: '15px', backgroundColor: '#00FF88', borderRadius: '10px', animation: `dance 1s infinite ease-in-out ${delay}s` }),
     diceBtn: { background: theme.inputBg, border: `1px solid ${theme.borderColor}`, borderRadius: '15px', color: theme.subText, padding: '6px 12px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', marginLeft: 'auto', marginBottom: '15px', transition: '0.2s' },
@@ -422,7 +406,7 @@ export default function Html() {
             <div className="left-section">
                 <div style={{ fontSize: '0.8rem', color: bgColor, fontWeight: '600', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '1px', filter: darkMode ? 'brightness(1.5)' : 'brightness(0.9)' }}>{greeting}</div>
                 <h1 className="main-title">Tam IA</h1>
-                <p className="subtitle" style={{color: theme.subText}}>Música inteligente: Texto, Voz, Imagen y Viajes.</p>
+                <p className="subtitle" style={{color: theme.subText}}>Música inteligente: Escribe "Rock, Pop, Bad Bunny" para mezclar.</p>
                 
                 <div style={{ marginBottom: '15px', width: '100%' }}>
                     <button onClick={handleRandomSearch} style={styles.diceBtn}>🎲 Sorpréndeme</button>
