@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 
-// --- CONFIGURACIÓN DEL SERVIDOR ---
-const PROD_URL = "https://residencias-lac.vercel.app/"; 
-
-// Esta lógica usa localhost si estás en tu PC, y la URL real 
+// Si la página detecta que está en internet, usa tu servidor real. Si no, usa localhost.
 const API_URL = window.location.hostname === "localhost" 
-    ? "http://localhost:5000" 
-    : PROD_URL;
+  ? "http://localhost:5000" 
+  : "https://residencias-lac.vercel.app/"; 
 
 // --- HELPER: Mezclar array (Shuffle) ---
 const shuffleArray = (array) => {
