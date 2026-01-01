@@ -1,84 +1,60 @@
 import React, { useState, useEffect, useRef } from "react";
-
-// --- CONFIGURACIÓN DE CONEXIÓN ---
-// IMPORTANTE: Cuando subas tu backend a internet (Render, Heroku, etc.), pon el link aquí.
-const PROD_URL = "https://residencias-lac.vercel.app/"; 
-
-// Detecta el entorno. Si no es localhost, usa PROD_URL. Si PROD_URL está vacío, evita rutas relativas inválidas usando localhost como fallback.
-const API_URL = window.location.hostname === "localhost" 
-  ? "http://localhost:5000" 
-  : (PROD_URL !== "https://residencias-lac.vercel.app/" ? PROD_URL : "http://localhost:5000");
-
-// Helper para mezclar canciones (Shuffle)
-const shuffleArray = (array) => {
-  const newArray = [...array];
-  for (let i = newArray.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-  }
-  return newArray;
-};
+import { searchPlaylistsByMood, searchArtistsAndTracks, searchGlobalTop, analyzeImageAndSearch, searchTracks } from "./spotify";
 
 export default function Html() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [playlistResult, setPlaylistResult] = useState([]);
+  const [playlistResult, setPlaylistResult] = useState([]); 
   const [aiInterpretation, setAiInterpretation] = useState("");
   const [artistResult, setArtistResult] = useState(null);
-  const [trackResult, setTrackResult] = useState([]);
+  const [trackResult, setTrackResult] = useState([]); 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [mode, setMode] = useState("mood");
-  const [bgColor, setBgColor] = useState("#1a1a1a");
+  
+  const [mode, setMode] = useState("mood"); 
+  const [bgColor, setBgColor] = useState("#1a1a1a"); 
   const [history, setHistory] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const [queue, setQueue] = useState([]);
   const [showQueue, setShowQueue] = useState(false);
+
   const [isListening, setIsListening] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [greeting, setGreeting] = useState("");
   const [darkMode, setDarkMode] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
-  const [spotifyToken, setSpotifyToken] = useState("");
+
   const [currentTrack, setCurrentTrack] = useState(null);
-  
   const audioRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const countries = [{ code: "MX", name: "México", flag: "🇲🇽" }, { code: "ES", name: "España", flag: "🇪🇸" }, { code: "US", name: "USA", flag: "🇺🇸" }, { code: "BR", name: "Brasil", flag: "🇧🇷" }, { code: "KR", name: "Corea", flag: "🇰🇷" }, { code: "JP", name: "Japón", flag: "🇯🇵" }, { code: "CO", name: "Colombia", flag: "🇨🇴" }, { code: "AR", name: "Argentina", flag: "🇦🇷" }];
-  
-  const randomPrompts = ["Ciberpunk hacker a las 3 AM", "Cena romántica italiana", "Entrenamiento bestial modo bestia", "Domingo de limpieza", "Lluvia melancólica", "Roadtrip California", "Fiesta piscina 80s", "Meditación Zen", "Café parisino", "Vaquero espacial", "Jazz NY 1950", "Perreo intenso", "Lo-fi estudiar", "Bosque mágico", "Batalla final juego", "Desayuno elegante", "Picnic primavera", "Tokio Drift noche", "Lluvia y libros", "Halloween terror", "Navidad chimenea", "Electrónica playa", "Detective Noir", "Psicodelia 60s", "Ring de boxeo", "Amanecer montaña", "Caos cocina", "Amor metro", "Estación espacial", "Rave búnker"];
+  const countries = [ { code: "MX", name: "México", flag: "🇲🇽" }, { code: "ES", name: "España", flag: "🇪🇸" }, { code: "US", name: "USA", flag: "🇺🇸" }, { code: "BR", name: "Brasil", flag: "🇧🇷" }, { code: "KR", name: "Corea", flag: "🇰🇷" }, { code: "JP", name: "Japón", flag: "🇯🇵" }, { code: "CO", name: "Colombia", flag: "🇨🇴" }, { code: "AR", name: "Argentina", flag: "🇦🇷" } ];
 
-  // --- EFECTOS DE INICIO ---
+  // --- LISTA GIGANTE DE PROMPTS ALEATORIOS ---
+  const randomPrompts = [
+    "Ciberpunk hacker a las 3 AM", "Cena romántica italiana con vino", "Entrenamiento bestial modo bestia", 
+    "Domingo de limpieza con energía", "Lluvia melancólica en la ventana", "Roadtrip por la costa de California", 
+    "Fiesta en la piscina años 80", "Meditación en un templo zen", "Café parisino por la mañana", 
+    "Vaquero espacial en Marte", "Noche de jazz en Nueva York 1950", "Perreo intenso hasta el suelo", 
+    "Estudiando física cuántica lo-fi", "Caminata por el bosque mágico", "Batalla épica de videojuego final", 
+    "Desayuno con diamantes elegante", "Picnic en primavera con flores", "Conduciendo en Tokio de noche (Drift)", 
+    "Tarde de lluvia y libros antiguos", "Fiesta de Halloween terrorífica", "Navidad acogedora frente a la chimenea", 
+    "Festival de música electrónica en la playa", "Detective privado en película Noir", "Viaje psicodélico años 60", 
+    "Entrando al ring de boxeo", "Amanecer en la montaña sagrada", "Caos en la cocina preparando cena", 
+    "Amor a primera vista en el metro", "Soledad en una estación espacial", "Rave en un búnker subterráneo"
+  ];
+
   useEffect(() => {
-    // 1. Obtener Token de Spotify del Backend
-    const getToken = async () => {
-      try {
-        // Verificamos que la URL sea válida antes de intentar el fetch
-        if (!API_URL || API_URL.includes("tu-backend.com")) {
-             console.warn("API_URL no configurada correctamente para producción.");
-             // No lanzamos error aquí para permitir que la UI cargue, pero avisamos.
-             return; 
-        }
-        const res = await fetch(`${API_URL}/api/token`);
-        if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
-        const data = await res.json();
-        setSpotifyToken(data.token);
-      } catch (e) { 
-        console.error("Error token:", e); 
-        setError("No se pudo conectar al servidor. Revisa la consola."); 
-      }
-    };
-    getToken();
+    const savedHistory = JSON.parse(localStorage.getItem("musicHistory")) || [];
+    setHistory(savedHistory);
+    const savedFavorites = JSON.parse(localStorage.getItem("musicFavorites")) || [];
+    setFavorites(savedFavorites);
+    const savedQueue = JSON.parse(localStorage.getItem("musicQueue")) || [];
+    setQueue(savedQueue);
 
-    // 2. Cargar datos locales
-    setHistory(JSON.parse(localStorage.getItem("musicHistory")) || []);
-    setFavorites(JSON.parse(localStorage.getItem("musicFavorites")) || []);
-    setQueue(JSON.parse(localStorage.getItem("musicQueue")) || []);
-
-    // 3. Configurar UI
     const hour = new Date().getHours();
     setGreeting(hour < 12 ? "Buenos días ☀️" : hour < 19 ? "Buenas tardes 🌤️" : "Buenas noches 🌙");
+
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     setDarkMode(mediaQuery.matches);
     const handleChange = (e) => setDarkMode(e.matches);
@@ -86,114 +62,6 @@ export default function Html() {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
-  // --- FUNCIONES DE SPOTIFY (Integradas) ---
-  const searchSpotifyTracks = async (query, limit = 10) => {
-    if (!spotifyToken) return [];
-    try {
-      const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=${limit}`, {
-        headers: { Authorization: `Bearer ${spotifyToken}` }
-      });
-      const data = await res.json();
-      if (!data.tracks) return [];
-      return data.tracks.items.map(track => ({
-        id: track.id,
-        name: track.name,
-        artist: track.artists[0].name,
-        albumImage: track.album.images[0]?.url,
-        previewUrl: track.preview_url,
-        externalUrl: track.external_urls.spotify,
-        type: 'track'
-      }));
-    } catch (e) { return []; }
-  };
-
-  const searchSpotifyArtist = async (query) => {
-    if (!spotifyToken) return null;
-    try {
-      const resArtist = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=1`, {
-        headers: { Authorization: `Bearer ${spotifyToken}` }
-      });
-      const dataArtist = await resArtist.json();
-      const artist = dataArtist.artists?.items[0];
-      if (!artist) return null;
-      
-      const resTracks = await fetch(`https://api.spotify.com/v1/artists/${artist.id}/top-tracks?market=US`, {
-        headers: { Authorization: `Bearer ${spotifyToken}` }
-      });
-      const dataTracks = await resTracks.json();
-      
-      return {
-        artistName: artist.name,
-        tracks: dataTracks.tracks.map(track => ({
-          id: track.id,
-          name: track.name,
-          artist: track.artists[0].name,
-          albumImage: track.album.images[0]?.url,
-          previewUrl: track.preview_url,
-          externalUrl: track.external_urls.spotify,
-          type: 'track'
-        }))
-      };
-    } catch (e) { return null; }
-  };
-
-  // --- LÓGICA PRINCIPAL (SMART MIX) ---
-  const performSearch = async (term) => {
-    if (!spotifyToken) { setError("Conectando..."); return; }
-    setLoading(true); setError(""); setPlaylistResult([]); setTrackResult([]); setArtistResult(null); setSearchTerm(term); setShowHistory(false);
-    
-    if (mode === "favorites" || mode === "travel") setMode("mood");
-
-    try {
-      // Modo Artista
-      if (mode === "artist") {
-        const data = await searchSpotifyArtist(term);
-        if (data) { setArtistResult(data); addToHistory(term); } 
-        else { setError("Artista no encontrado."); }
-        setLoading(false);
-        return;
-      }
-      // Modo Canción
-      if (mode === "song") {
-        const tracks = await searchSpotifyTracks(term, 20);
-        if (tracks.length > 0) { setTrackResult(tracks); addToHistory(term); } 
-        else { setError("Canción no encontrada."); }
-        setLoading(false);
-        return;
-      }
-
-      // Modo Mood/Mix (IA)
-      const aiRes = await fetch(`${API_URL}/api/ai-recommendation`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ userPrompt: term })
-      });
-      
-      const aiData = await aiRes.json();
-      // Detectar lista de queries para Smart Mix
-      const queries = aiData.queries || [term];
-      setBgColor(aiData.hexColor || "#1a1a1a");
-      setAiInterpretation(aiData.aiMessage || "Resultado");
-
-      // Buscar cada término por separado
-      const searchPromises = queries.map(q => searchSpotifyTracks(q, 6)); // 6 canciones por término
-      const resultsArray = await Promise.all(searchPromises);
-      
-      let allTracks = [];
-      resultsArray.forEach(tracks => allTracks = [...allTracks, ...tracks]);
-      
-      // Mezclar resultados
-      const mixedPlaylist = shuffleArray(allTracks);
-
-      if (mixedPlaylist.length > 0) { setPlaylistResult(mixedPlaylist); addToHistory(term); } 
-      else { setError("No encontré canciones."); }
-
-    } catch (err) { setError("Error al conectar."); } finally { setLoading(false); }
-  };
-
-  // --- MANEJADORES UI ---
-  const handleSearch = (e) => { e.preventDefault(); if (searchTerm.trim()) performSearch(searchTerm); };
-  
   const addToQueue = (e, item) => {
     e.stopPropagation();
     const newQueue = [...queue, item];
@@ -201,83 +69,36 @@ export default function Html() {
     localStorage.setItem("musicQueue", JSON.stringify(newQueue));
     setToastMessage("Añadido a la cola 🎵"); setShowToast(true); setTimeout(() => setShowToast(false), 2000);
   };
-  
-  const removeFromQueue = (index) => {
-    const newQueue = queue.filter((_, i) => i !== index);
-    setQueue(newQueue);
-    localStorage.setItem("musicQueue", JSON.stringify(newQueue));
-  };
-  
+  const removeFromQueue = (index) => { const newQueue = queue.filter((_, i) => i !== index); setQueue(newQueue); localStorage.setItem("musicQueue", JSON.stringify(newQueue)); };
   const clearQueue = () => { setQueue([]); localStorage.removeItem("musicQueue"); };
 
   const playTrack = (track) => {
     if (!track.previewUrl) { window.open(track.externalUrl, '_blank'); return; }
     setCurrentTrack(track);
-    setTimeout(() => { if (audioRef.current) { audioRef.current.src = track.previewUrl; audioRef.current.play(); } }, 100);
+    setTimeout(() => { if(audioRef.current) { audioRef.current.src = track.previewUrl; audioRef.current.play(); } }, 100);
   };
-  
-  const closePlayer = () => { if (audioRef.current) audioRef.current.pause(); setCurrentTrack(null); };
+  const closePlayer = () => { if(audioRef.current) audioRef.current.pause(); setCurrentTrack(null); };
 
-  const toggleFavorite = (e, item, type) => {
-    e.stopPropagation(); e.preventDefault();
-    const exists = favorites.find(fav => fav.id === item.id);
-    let newFavs = exists ? favorites.filter(fav => fav.id !== item.id) : [...favorites, { ...item, type }];
-    setFavorites(newFavs); localStorage.setItem("musicFavorites", JSON.stringify(newFavs));
-  };
-
-  const addToHistory = (term) => {
-    let newHistory = [term, ...history.filter(t => t !== term)].slice(0, 5);
-    setHistory(newHistory); localStorage.setItem("musicHistory", JSON.stringify(newHistory));
-  };
-  
-  const deleteHistoryItem = (e, termToDelete) => {
-    e.stopPropagation();
-    const newHistory = history.filter(term => term !== termToDelete);
-    setHistory(newHistory); localStorage.setItem("musicHistory", JSON.stringify(newHistory));
-  };
-
-  const handleRandomSearch = () => {
-    const randomPick = randomPrompts[Math.floor(Math.random() * randomPrompts.length)];
-    performSearch(randomPick);
-  };
-
-  const handleVoiceSearch = () => {
-    if (!('webkitSpeechRecognition' in window)) { alert("Navegador no compatible."); return; }
-    const recognition = new window.webkitSpeechRecognition();
-    recognition.lang = 'es-ES';
-    recognition.continuous = false;
-    recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event) => { setSearchTerm(event.results[0][0].transcript); performSearch(event.results[0][0].transcript); };
-    recognition.onend = () => setIsListening(false);
-    recognition.start();
-  };
-
+  // --- LÓGICA DE FOTOS (AQUÍ OCURRE LA MAGIA) ---
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setLoading(true); setSearchTerm("Analizando imagen... 📸");
+    setLoading(true);
+    setSearchTerm("Analizando imagen... 📸"); // Feedback visual
     const reader = new FileReader();
     reader.onloadend = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/ai-vision`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: reader.result })
-        });
-        const aiData = await res.json();
-        const queries = aiData.queries || ["Pop"];
-        setBgColor(aiData.hexColor || "#1a1a1a");
-        setAiInterpretation(aiData.aiMessage || "Vibe visual");
-        
-        const searchPromises = queries.map(q => searchSpotifyTracks(q, 6));
-        const resultsArray = await Promise.all(searchPromises);
-        let allTracks = [];
-        resultsArray.forEach(tracks => allTracks = [...allTracks, ...tracks]);
-        
-        setPlaylistResult(shuffleArray(allTracks));
-        setMode("mood"); addToHistory("📸 Búsqueda Visual"); setSearchTerm("");
-      } catch (e) { setError("Error analizando imagen."); } 
-      finally { setLoading(false); }
+        try {
+            // Enviamos la imagen (reader.result es el Base64) al backend
+            const result = await analyzeImageAndSearch(reader.result);
+            if (result) {
+                setMode("mood"); 
+                setPlaylistResult(result.items); 
+                setAiInterpretation(result.aiInterpretation); // Descripción de la IA
+                if (result.moodColor) setBgColor(result.moodColor); // Color extraído
+                addToHistory("📸 Búsqueda Visual");
+                setSearchTerm(""); // Limpiar
+            } else { setError("No pude entender la imagen."); }
+        } catch (err) { setError("Error al analizar imagen."); } finally { setLoading(false); }
     };
     reader.readAsDataURL(file);
   };
@@ -285,11 +106,62 @@ export default function Html() {
   const handleCountrySelect = async (country) => {
     setLoading(true); setMode("travel"); setSearchTerm(`Top ${country.name}`);
     try {
-      const tracks = await searchSpotifyTracks(`Top 50 ${country.name}`, 20);
-      setPlaylistResult(tracks);
-      setAiInterpretation(`Explorando ${country.name} ${country.flag}`);
-      setBgColor("#1DB954");
+        const { items, moodColor } = await searchGlobalTop(country.name);
+        setPlaylistResult(items); setAiInterpretation(`Explorando ${country.name} ${country.flag}`); setBgColor(moodColor);
     } catch (err) { setError("Error viajando."); } finally { setLoading(false); }
+  };
+
+  const performSearch = async (term) => {
+    setLoading(true); setError(""); setPlaylistResult([]); setTrackResult([]); setAiInterpretation(""); setArtistResult(null); setSearchTerm(term);
+    setShowHistory(false);
+    
+    if (mode === "favorites" || mode === "travel") setMode("mood");
+    
+    try {
+      if (mode === "artist") {
+        setBgColor(darkMode ? "#1a1a1a" : "#ffffff");
+        const data = await searchArtistsAndTracks(term);
+        if (data.tracks.length > 0) { setArtistResult(data); addToHistory(term); } 
+        else { setError(`No encontramos a ${data.artistName}.`); }
+      } else if (mode === "song") {
+        setBgColor(darkMode ? "#1a1a1a" : "#ffffff");
+        const data = await searchTracks(term);
+        if (data.tracks.length > 0) { setTrackResult(data.tracks); addToHistory(term); }
+        else { setError("No encontramos esa canción."); }
+      } else {
+        const { items, aiTerms, moodColor } = await searchPlaylistsByMood(term);
+        if (moodColor) setBgColor(moodColor);
+        if (aiTerms && aiTerms.toLowerCase() !== term.toLowerCase()) setAiInterpretation(aiTerms);
+        if (items.length > 0) { setPlaylistResult(items); addToHistory(term); } 
+        else { setError("No encontramos playlists."); }
+      }
+    } catch (err) { setError("Error de conexión."); } finally { setLoading(false); }
+  };
+
+  const handleSearch = (e) => { e.preventDefault(); if(searchTerm.trim()) performSearch(searchTerm); };
+  const toggleFavorite = (e, item, type) => {
+    e.stopPropagation(); e.preventDefault();
+    const exists = favorites.find(fav => fav.id === item.id);
+    let newFavs = exists ? favorites.filter(fav => fav.id !== item.id) : [...favorites, { ...item, type }];
+    setFavorites(newFavs); localStorage.setItem("musicFavorites", JSON.stringify(newFavs));
+  };
+  const addToHistory = (term) => {
+    let newHistory = [term, ...history.filter(t => t !== term)].slice(0, 5);
+    setHistory(newHistory); localStorage.setItem("musicHistory", JSON.stringify(newHistory));
+  };
+  const deleteHistoryItem = (e, termToDelete) => { e.stopPropagation(); const newHistory = history.filter(term => term !== termToDelete); setHistory(newHistory); localStorage.setItem("musicHistory", JSON.stringify(newHistory)); };
+  
+  const handleRandomSearch = () => {
+    const randomPick = randomPrompts[Math.floor(Math.random() * randomPrompts.length)];
+    performSearch(randomPick);
+  };
+  const handleVoiceSearch = () => {
+    if (!('webkitSpeechRecognition' in window)) { alert("Navegador no compatible."); return; }
+    const recognition = new window.webkitSpeechRecognition(); recognition.lang = 'es-ES'; recognition.continuous = false;
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (event) => { setSearchTerm(event.results[0][0].transcript); performSearch(event.results[0][0].transcript); };
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
   };
 
   const theme = {
@@ -305,10 +177,31 @@ export default function Html() {
     historyBg: darkMode ? '#2a2a2a' : '#fff'
   };
 
+  // --- MODIFICACIÓN RESPONSIVA: Separe los estilos de layout de los estilos visuales ---
   const styles = {
-    pageContainer: { minHeight: '100vh', background: `radial-gradient(circle at top left, ${bgColor} 0%, ${theme.bgGradient} 80%)`, color: theme.text, transition: 'background 1.5s ease' },
-    heroContainer: { background: theme.heroBg, backdropFilter: 'blur(20px)', borderRadius: '24px', border: `1px solid ${bgColor}40`, boxShadow: `0 20px 60px ${theme.shadow}, 0 0 30px ${bgColor}20`, transition: 'border-color 1.5s ease, box-shadow 1.5s ease, background 0.5s' },
-    rightSection: { background: `linear-gradient(to bottom right, ${bgColor}60, ${theme.rightSectionOverlay}), url('https://source.unsplash.com/random/800x800/?abstract,music') center/cover no-repeat`, transition: 'background 1.5s ease', position: 'relative', overflow: 'hidden' },
+    // Layout movido a CSS (.page-container)
+    pageContainer: { 
+        minHeight: '100vh', 
+        background: `radial-gradient(circle at top left, ${bgColor} 0%, ${theme.bgGradient} 80%)`, 
+        color: theme.text,
+        transition: 'background 1.5s ease'
+    },
+    // Layout movido a CSS (.hero-container)
+    heroContainer: { 
+        background: theme.heroBg, 
+        backdropFilter: 'blur(20px)', 
+        borderRadius: '24px', 
+        border: `1px solid ${bgColor}40`, 
+        boxShadow: `0 20px 60px ${theme.shadow}, 0 0 30px ${bgColor}20`, 
+        transition: 'border-color 1.5s ease, box-shadow 1.5s ease, background 0.5s' 
+    },
+    // Layout movido a CSS (.right-section)
+    rightSection: { 
+        background: `linear-gradient(to bottom right, ${bgColor}60, ${theme.rightSectionOverlay}), url('https://source.unsplash.com/random/800x800/?abstract,music') center/cover no-repeat`, 
+        transition: 'background 1.5s ease',
+        position: 'relative', 
+        overflow: 'hidden' 
+    },
     loaderContainer: { display: 'flex', gap: '4px', justifyContent: 'center', margin: '30px 0' },
     bar: (delay) => ({ width: '5px', height: '15px', backgroundColor: '#00FF88', borderRadius: '10px', animation: `dance 1s infinite ease-in-out ${delay}s` }),
     diceBtn: { background: theme.inputBg, border: `1px solid ${theme.borderColor}`, borderRadius: '15px', color: theme.subText, padding: '6px 12px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', marginLeft: 'auto', marginBottom: '15px', transition: '0.2s' },
@@ -342,141 +235,142 @@ export default function Html() {
 
   return (
     <div className="page-container" style={styles.pageContainer}>
-      {showToast && <div style={styles.toast}>{toastMessage}</div>}
-      
-      <button onClick={() => setShowQueue(!showQueue)} style={styles.queueBtn}>🎵 Cola ({queue.length})</button>
-      <div style={styles.queueContainer} className="queue-container">
-        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'15px'}}>
-          <h3 style={{color: theme.text, margin:0}}>Mi Cola</h3>
-          <div style={{display:'flex', gap:'10px'}}>
-            <button onClick={() => clearQueue()} style={{background:'transparent',border:'none',color:'#ff6b6b',fontSize:'0.8rem',cursor:'pointer'}}>Borrar Todo</button>
-            <button onClick={() => setShowQueue(false)} style={{background:'transparent',border:'none',color: theme.text, fontSize:'1.2rem',cursor:'pointer'}}>✕</button>
-          </div>
-        </div>
-        {queue.length === 0 ? <p style={{color: theme.subText, fontSize:'0.9rem'}}>Vacía. Añade canciones con +</p> : queue.map((item, i) => (
-          <div key={i} style={styles.queueItem}>
-            <img src={item.albumImage} style={styles.queueImg} alt="art" />
-            <div style={{flex:1, overflow:'hidden'}}>
-              <div style={{color:theme.text, fontSize:'0.8rem', fontWeight:'bold', whiteSpace:'nowrap', textOverflow:'ellipsis'}}>{item.name}</div>
-              <div style={{color:theme.subText, fontSize:'0.7rem'}}>{item.artist || "Playlist"}</div>
-            </div>
-            <button onClick={() => playTrack(item)} style={{background:'none',border:'none',cursor:'pointer'}}>▶️</button>
-            <button onClick={() => removeFromQueue(i)} style={{background:'none',border:'none',color:'#ff6b6b',cursor:'pointer'}}>×</button>
-          </div>
-        ))}
-      </div>
-
-      <div className="hero-container" style={styles.heroContainer}>
-        <div className="left-section">
-          <div style={{ fontSize: '0.8rem', color: bgColor, fontWeight: '600', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '1px', filter: darkMode ? 'brightness(1.5)' : 'brightness(0.9)' }}>{greeting}</div>
-          <h1 className="main-title">Tam IA</h1>
-          <p className="subtitle" style={{color: theme.subText}}>Música inteligente: Texto, Voz, Imagen y Viajes.</p>
-          
-          <div style={{ marginBottom: '15px', width: '100%' }}>
-            <button onClick={handleRandomSearch} style={styles.diceBtn}>🎲 Sorpréndeme</button>
-            <div className="tab-container">
-              <button onClick={() => setMode("mood")} style={styles.tabBtn(mode === "mood")}>✨ Mood</button>
-              <button onClick={() => setMode("song")} style={styles.tabBtn(mode === "song")}>🎵 Canción</button>
-              <button onClick={() => setMode("artist")} style={styles.tabBtn(mode === "artist")}>🎤 Artista</button>
-              <button onClick={() => setMode("travel")} style={styles.tabBtn(mode === "travel")}>🌍 Viajes</button>
-              <button onClick={() => setMode("favorites")} style={styles.tabBtn(mode === "favorites")}>❤️ Favs</button>
-            </div>
-            
-            {mode === "travel" ? (
-              <div style={styles.flagGrid}>
-                {countries.map(c => <button key={c.code} style={styles.flagBtn} onClick={() => handleCountrySelect(c)} title={c.name}>{c.flag}</button>)}
-              </div>
-            ) : (
-              <form onSubmit={handleSearch} className="search-form">
-                <div style={styles.inputWrapper}>
-                  <input style={styles.input} type="text" 
-                    placeholder={mode === "mood" ? "Escribe o sube foto..." : mode === "song" ? "Nombre de la canción..." : "Busca artista..."} 
-                    value={searchTerm} 
-                    onChange={(e) => setSearchTerm(e.target.value)} 
-                    disabled={mode === "favorites"} 
-                    onFocus={() => setShowHistory(true)}
-                    onBlur={() => setTimeout(() => setShowHistory(false), 200)}
-                  />
-                  {showHistory && history.length > 0 && mode !== 'favorites' && (
-                    <div style={styles.historyDropdown}>
-                      <div style={{fontSize:'0.7rem', color: theme.subText, marginBottom:'5px'}}>Recientes</div>
-                      {history.map((term, index) => (
-                        <div key={index} style={styles.historyItem} onClick={() => performSearch(term)}>
-                          <span>🕒 {term}</span>
-                          <button onClick={(e) => deleteHistoryItem(e, term)} style={{background:'none',border:'none',color:'#ff6b6b'}}>×</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <input type="file" accept="image/*" ref={fileInputRef} style={{display:'none'}} onChange={handleImageUpload} />
-                  {mode === "mood" && <button type="button" onClick={() => fileInputRef.current.click()} className="icon-btn" title="Foto">📸</button>}
-                  {mode !== "favorites" && <button type="button" onClick={handleVoiceSearch} className={`icon-btn ${isListening ? 'pulse' : ''}`}>{isListening ? '🛑' : '🎙️'}</button>}
+        {showToast && <div style={styles.toast}>{toastMessage}</div>}
+        
+        <button onClick={() => setShowQueue(!showQueue)} style={styles.queueBtn}>🎵 Cola ({queue.length})</button>
+        <div style={styles.queueContainer} className="queue-container">
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'15px'}}>
+                <h3 style={{color: theme.text, margin:0}}>Mi Cola</h3>
+                <div style={{display:'flex', gap:'10px'}}>
+                    <button onClick={() => clearQueue()} style={{background:'transparent',border:'none',color:'#ff6b6b',fontSize:'0.8rem',cursor:'pointer'}}>Borrar Todo</button>
+                    <button onClick={() => setShowQueue(false)} style={{background:'transparent',border:'none',color: theme.text, fontSize:'1.2rem',cursor:'pointer'}}>✕</button>
                 </div>
-                <button type="submit" className="search-btn" disabled={loading || mode === "favorites"}>🔎</button>
-              </form>
-            )}
-          </div>
-          <div className="footer-info"><span>© 2025 Tam IA</span><span>Gemini • Spotify</span></div>
-        </div>
-
-        <div className="right-section" style={styles.rightSection}>
-          <div className="results-overlay">
-            {loading && renderLoader()}
-            {!loading && aiInterpretation && mode === "mood" && <div style={{marginTop:'15px',textAlign:'center'}}><span style={styles.aiText}>🤖 {aiInterpretation}</span></div>}
-            
-            {!loading && (
-              <div style={{ marginTop: '15px', animation: 'fadeInUp 0.5s', width: '100%' }}>
-                {(playlistResult.length > 0 || trackResult.length > 0 || (artistResult && artistResult.tracks) || (mode === "favorites" && favorites.length > 0)) && (
-                  <div style={styles.gridContainer}>
-                    {(artistResult ? artistResult.tracks : mode === "song" ? trackResult : mode === "favorites" ? favorites : playlistResult).map((item) => {
-                      const isLiked = favorites.some(fav => fav.id === item.id);
-                      const isTrack = item.previewUrl !== undefined || item.type === 'track' || artistResult || mode === "song";
-                      const image = item.albumImage || (item.images ? item.images[0]?.url : null) || "https://via.placeholder.com/150";
-                      return (
-                        <div key={item.id} style={styles.trackCard}>
-                          <div style={{position:'relative', width:'100%', marginBottom:'8px'}}>
-                            <img src={image} alt={item.name} style={styles.trackImage} />
-                            <div style={styles.floatingActions}>
-                              {isTrack && <button onClick={(e) => addToQueue(e, {...item, albumImage: image})} style={styles.miniBtn(false, 'white')} title="Añadir a Cola">+</button>}
-                              <button onClick={(e) => toggleFavorite(e, item, isTrack ? 'track' : 'playlist')} style={styles.miniBtn(isLiked, '#FF4081')}>{isLiked ? '❤️' : '🤍'}</button>
-                            </div>
-                          </div>
-                          <div style={{width:'100%', textAlign:'center'}}>
-                            <div style={{ fontWeight: '600', fontSize: '0.8rem', marginBottom: '6px', color: theme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.name}>{item.name}</div>
-                            <div style={{fontSize:'0.7rem', color: theme.subText, marginBottom:'5px'}}>{item.artist}</div>
-                            {isTrack ? (<button onClick={() => playTrack(item)} style={styles.linkBtnFull}>{currentTrack?.id === item.id ? '🔊' : '▶️ Play'}</button>) : (<a href={item.external_urls?.spotify} target="_blank" rel="noreferrer" style={styles.linkBtnFull}>Abrir ↗</a>)}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-            {!loading && !playlistResult.length && !trackResult.length && !artistResult && mode !== 'favorites' && !error && renderEmptyState()}
-          </div>
-        </div>
-      </div>
-
-      {currentTrack && (
-        <div style={styles.stickyPlayer}>
-          <div style={{display:'flex',alignItems:'center',gap:'10px',color: theme.text}}>
-            <img src={currentTrack.albumImage} style={styles.playerImg} alt="cover" />
-            <div style={{maxWidth:'120px',overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>
-              <div style={{fontWeight:'bold',fontSize:'0.8rem'}}>{currentTrack.name}</div>
-              <div style={{fontSize:'0.7rem',color: theme.subText}}>{currentTrack.artist || "Artista"}</div>
             </div>
-          </div>
-          <audio ref={audioRef} controls autoPlay style={{height:'30px',maxWidth:'50%', filter: darkMode ? 'invert(1)' : 'none'}} />
-          <button onClick={closePlayer} style={{background:'transparent',border:'none',color: theme.subText,fontSize:'1.2rem',cursor:'pointer'}}>&times;</button>
+            {queue.length === 0 ? <p style={{color: theme.subText, fontSize:'0.9rem'}}>Vacía. Añade canciones con +</p> : queue.map((item, i) => (
+                <div key={i} style={styles.queueItem}>
+                    <img src={item.albumImage} style={styles.queueImg} alt="art" />
+                    <div style={{flex:1, overflow:'hidden'}}>
+                        <div style={{color:theme.text, fontSize:'0.8rem', fontWeight:'bold', whiteSpace:'nowrap', textOverflow:'ellipsis'}}>{item.name}</div>
+                        <div style={{color:theme.subText, fontSize:'0.7rem'}}>{item.artist || "Playlist"}</div>
+                    </div>
+                    <button onClick={() => playTrack(item)} style={{background:'none',border:'none',cursor:'pointer'}}>▶️</button>
+                    <button onClick={() => removeFromQueue(i)} style={{background:'none',border:'none',color:'#ff6b6b',cursor:'pointer'}}>×</button>
+                </div>
+            ))}
         </div>
-      )}
+
+        <div className="hero-container" style={styles.heroContainer}>
+            <div className="left-section">
+                <div style={{ fontSize: '0.8rem', color: bgColor, fontWeight: '600', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '1px', filter: darkMode ? 'brightness(1.5)' : 'brightness(0.9)' }}>{greeting}</div>
+                <h1 className="main-title">Tam IA</h1>
+                <p className="subtitle" style={{color: theme.subText}}>Música inteligente: Texto, Voz, Imagen y Viajes.</p>
+                
+                <div style={{ marginBottom: '15px', width: '100%' }}>
+                    <button onClick={handleRandomSearch} style={styles.diceBtn}>🎲 Sorpréndeme</button>
+                    <div className="tab-container">
+                        <button onClick={() => setMode("mood")} style={styles.tabBtn(mode === "mood")}>✨ Mood</button>
+                        <button onClick={() => setMode("song")} style={styles.tabBtn(mode === "song")}>🎵 Canción</button>
+                        <button onClick={() => setMode("artist")} style={styles.tabBtn(mode === "artist")}>🎤 Artista</button>
+                        <button onClick={() => setMode("travel")} style={styles.tabBtn(mode === "travel")}>🌍 Viajes</button>
+                        <button onClick={() => setMode("favorites")} style={styles.tabBtn(mode === "favorites")}>❤️ Favs</button>
+                    </div>
+                    
+                    {mode === "travel" ? (
+                        <div style={styles.flagGrid}>
+                            {countries.map(c => <button key={c.code} style={styles.flagBtn} onClick={() => handleCountrySelect(c)} title={c.name}>{c.flag}</button>)}
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSearch} className="search-form">
+                            <div style={styles.inputWrapper}>
+                                <input style={styles.input} type="text" 
+                                    placeholder={mode === "mood" ? "Escribe o sube foto..." : mode === "song" ? "Nombre de la canción..." : "Busca artista..."} 
+                                    value={searchTerm} 
+                                    onChange={(e) => setSearchTerm(e.target.value)} 
+                                    disabled={mode === "favorites"} 
+                                    onFocus={() => setShowHistory(true)}
+                                    onBlur={() => setTimeout(() => setShowHistory(false), 200)}
+                                />
+                                {showHistory && history.length > 0 && mode !== 'favorites' && (
+                                    <div style={styles.historyDropdown}>
+                                        <div style={{fontSize:'0.7rem', color: theme.subText, marginBottom:'5px'}}>Recientes</div>
+                                        {history.map((term, index) => (
+                                            <div key={index} style={styles.historyItem} onClick={() => performSearch(term)}>
+                                                <span>🕒 {term}</span>
+                                                <button onClick={(e) => deleteHistoryItem(e, term)} style={{background:'none',border:'none',color:'#ff6b6b'}}>×</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <input type="file" accept="image/*" ref={fileInputRef} style={{display:'none'}} onChange={handleImageUpload} />
+                                {mode === "mood" && <button type="button" onClick={() => fileInputRef.current.click()} className="icon-btn" title="Foto">📸</button>}
+                                {mode !== "favorites" && <button type="button" onClick={handleVoiceSearch} className={`icon-btn ${isListening ? 'pulse' : ''}`}>{isListening ? '🛑' : '🎙️'}</button>}
+                            </div>
+                            <button type="submit" className="search-btn" disabled={loading || mode === "favorites"}>🔎</button>
+                        </form>
+                    )}
+                </div>
+                
+                <div className="footer-info"><span>© 2025 Tam IA</span><span>Gemini • Spotify</span></div>
+            </div>
+
+            <div className="right-section" style={styles.rightSection}>
+                <div className="results-overlay">
+                    {loading && renderLoader()}
+                    {!loading && aiInterpretation && mode === "mood" && <div style={{marginTop:'15px',textAlign:'center'}}><span style={styles.aiText}>🤖 {aiInterpretation}</span></div>}
+                    
+                    {!loading && (
+                        <div style={{ marginTop: '15px', animation: 'fadeInUp 0.5s', width: '100%' }}>
+                            {(playlistResult.length > 0 || trackResult.length > 0 || (artistResult && artistResult.tracks) || (mode === "favorites" && favorites.length > 0)) && (
+                                <div style={styles.gridContainer}>
+                                    {(artistResult ? artistResult.tracks : mode === "song" ? trackResult : mode === "favorites" ? favorites : playlistResult).map((item) => {
+                                        const isLiked = favorites.some(fav => fav.id === item.id);
+                                        const isTrack = item.previewUrl !== undefined || item.type === 'track' || artistResult || mode === "song";
+                                        const image = item.albumImage || (item.images ? item.images[0]?.url : null) || "https://via.placeholder.com/150";
+                                        return (
+                                            <div key={item.id} style={styles.trackCard}>
+                                                <div style={{position:'relative', width:'100%', marginBottom:'8px'}}>
+                                                    <img src={image} alt={item.name} style={styles.trackImage} />
+                                                    <div style={styles.floatingActions}>
+                                                        {isTrack && <button onClick={(e) => addToQueue(e, {...item, albumImage: image})} style={styles.miniBtn(false, 'white')} title="Añadir a Cola">+</button>}
+                                                        <button onClick={(e) => toggleFavorite(e, item, isTrack ? 'track' : 'playlist')} style={styles.miniBtn(isLiked, '#FF4081')}>{isLiked ? '❤️' : '🤍'}</button>
+                                                    </div>
+                                                </div>
+                                                <div style={{width:'100%', textAlign:'center'}}>
+                                                    <div style={{ fontWeight: '600', fontSize: '0.8rem', marginBottom: '6px', color: theme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.name}>{item.name}</div>
+                                                    <div style={{fontSize:'0.7rem', color: theme.subText, marginBottom:'5px'}}>{item.artist}</div>
+                                                    {isTrack ? (<button onClick={() => playTrack(item)} style={styles.linkBtnFull}>{currentTrack?.id === item.id ? '🔊' : '▶️ Play'}</button>) : (<a href={item.external_urls?.spotify} target="_blank" rel="noreferrer" style={styles.linkBtnFull}>Abrir ↗</a>)}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {!loading && !playlistResult.length && !trackResult.length && !artistResult && mode !== 'favorites' && !error && renderEmptyState()}
+                </div>
+            </div>
+        </div>
+
+        {currentTrack && (
+            <div style={styles.stickyPlayer}>
+                <div style={{display:'flex',alignItems:'center',gap:'10px',color: theme.text}}>
+                    <img src={currentTrack.albumImage} style={styles.playerImg} alt="cover" />
+                    <div style={{maxWidth:'120px',overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>
+                        <div style={{fontWeight:'bold',fontSize:'0.8rem'}}>{currentTrack.name}</div>
+                        <div style={{fontSize:'0.7rem',color: theme.subText}}>{currentTrack.artist || "Artista"}</div>
+                    </div>
+                </div>
+                <audio ref={audioRef} controls autoPlay style={{height:'30px',maxWidth:'50%', filter: darkMode ? 'invert(1)' : 'none'}} />
+                <button onClick={closePlayer} style={{background:'transparent',border:'none',color: theme.subText,fontSize:'1.2rem',cursor:'pointer'}}>&times;</button>
+            </div>
+        )}
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
         body { margin: 0; font-family: 'Poppins', sans-serif; background: ${darkMode ? '#000' : '#f0f2f5'}; overflow-x: hidden; color: ${darkMode ? '#fff' : '#222'}; transition: background 0.3s; }
         
-        /* Estilos Base (Desktop) */
+        /* Estilos Base (Desktop) movidos aquí para permitir overrides */
         .page-container {
             display: flex;
             justify-content: center;
@@ -524,7 +418,7 @@ export default function Html() {
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .pulse { animation: dance 1s infinite; }
 
-        /* DISEÑO RESPONSIVO (Móvil) */
+        /* DISEÑO RESPONSIVO CORREGIDO */
         @media (max-width: 850px) {
             .page-container {
                 padding: 10px;
@@ -547,7 +441,7 @@ export default function Html() {
                 min-height: auto; 
                 width: 100%; 
                 box-sizing: border-box; 
-                min-width: 0; 
+                min-width: 0; /* Fix flexbox overflow */
             }
 
             .right-section { 

@@ -9,7 +9,6 @@ import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/ge
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ajusta la ruta del .env según donde lo tengas guardado
 dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const app = express();
@@ -18,8 +17,9 @@ app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 
 const PORT = process.env.PORT || 5000;
 
-// Configuración de la IA
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+
 const MODEL_NAME = "gemini-2.5-flash"; 
 
 const safetySettings = [
@@ -29,7 +29,6 @@ const safetySettings = [
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
-// 1. Obtener Token de Spotify
 app.get("/api/token", async (req, res) => {
   try {
     const auth = Buffer.from(`${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`).toString("base64");
@@ -39,60 +38,50 @@ app.get("/api/token", async (req, res) => {
       { headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" } }
     );
     res.json({ token: response.data.access_token });
-  } catch (error) { 
-    console.error("Error Token:", error.message);
-    res.status(500).json({ error: error.message }); 
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// 2. Recomendación IA (Actualizado para Smart Mix)
 app.post("/api/ai-recommendation", async (req, res) => {
   const { userPrompt } = req.body;
   
   try {
+    // Usamos la constante MODEL_NAME para asegurar que sea la 2.5 esto para la IA
     const model = genAI.getGenerativeModel({ model: MODEL_NAME, safetySettings }); 
 
-    // Prompt mejorado para separar géneros (queries)
     const prompt = `
       Eres un experto musical. El usuario busca: "${userPrompt}".
-      
-      TAREA:
-      1. Si el usuario pide varios géneros o artistas (ej: "Rock y Reggaeton"), sepáralos.
-      2. Si usa jerga (ej: "bellakeo"), tradúcelo a "Reggaeton Old School".
-      3. Si es una actividad (ej: "jugar minecraft"), busca "C418" o "Ambient".
+      IMPORTANTE:
+      - Si es jerga (ej: bellakeo, perreo), asócialo a Reggaeton, Urbano, Dembow.
+      - Si es actividad (ej: minar minecraft), asócialo a Ambient, C418, Synthwave.
       
       Responde SOLO este JSON (sin markdown): 
-      {
-        "queries": ["Busqueda 1", "Busqueda 2", "Busqueda 3"], 
-        "hexColor": "#COLOR_HEX_VIBRANTE",
-        "aiMessage": "Breve mensaje del DJ"
-      }
+      {"searchTerms": "3 géneros o artistas en INGLÉS separados por comas", "hexColor": "#COLOR_HEX_VIBRANTE"}
     `;
 
     const result = await model.generateContent(prompt);
     const text = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
     const data = JSON.parse(text);
     
-    console.log(`✅ IA Mix: ${JSON.stringify(data.queries)}`);
+    console.log(`✅ IA Conectada (${MODEL_NAME}): ${data.searchTerms}`);
     res.json(data);
 
   } catch (error) {
-    console.error("❌ Error IA (Fallback):", error.message);
+    console.error("❌ Error IA (Usando Fallback):", error.message);
     
-    // Fallback compatible con el nuevo frontend
+    // Fallback por si acaso
     let cleanTerm = userPrompt;
     if (userPrompt.toLowerCase().includes("minecraft")) cleanTerm = "Minecraft Soundtrack";
+    if (userPrompt.toLowerCase().includes("bellakeo")) cleanTerm = "Reggaeton Old School";
     
-    res.json({ queries: [cleanTerm], hexColor: "#1db954", aiMessage: "Buscando..." }); 
+    res.json({ searchTerms: cleanTerm, hexColor: "#1db954" }); 
   }
 });
 
-// 3. Visión IA (Actualizado para devolver queries)
 app.post("/api/ai-vision", async (req, res) => {
   const { imageBase64 } = req.body;
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME, safetySettings });
-    const prompt = `Analiza la imagen. Responde SOLO JSON: {"queries": ["Género 1", "Género 2"], "hexColor": "#COLOR", "aiMessage": "Vibe detectada"}`;
+    const prompt = `Analiza la imagen. Responde SOLO JSON: {"moodDescription": "Descripción", "searchTerms": "3 géneros", "hexColor": "#COLOR"}`;
     const imagePart = { inlineData: { data: imageBase64.split(",")[1], mimeType: "image/jpeg" } };
     const result = await model.generateContent([prompt, imagePart]);
     const text = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
