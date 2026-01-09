@@ -24,6 +24,11 @@ export default function Html() {
   const [darkMode, setDarkMode] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
 
+  // --- NUEVO: ESTADOS PARA PAGINACIÓN ---
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  // --------------------------------------
+
   const [currentTrack, setCurrentTrack] = useState(null);
   const audioRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -78,6 +83,12 @@ export default function Html() {
     if (!file) return;
     setLoading(true);
     setSearchTerm("Analizando imagen... 📸"); 
+    
+    // --- NUEVO: RESETEO OFFSET ---
+    setOffset(0);
+    setHasMore(false); // Búsqueda por imagen suele ser única, desactivamos load more por ahora
+    // -----------------------------
+
     const reader = new FileReader();
     reader.onloadend = async () => {
         try {
@@ -97,8 +108,14 @@ export default function Html() {
 
   const handleCountrySelect = async (country) => {
     setLoading(true); setMode("travel"); setSearchTerm(`Top ${country.name}`);
+    
+    // --- NUEVO: RESETEO OFFSET ---
+    setOffset(0);
+    setHasMore(true);
+    // -----------------------------
+
     try {
-        const { items, moodColor } = await searchGlobalTop(country.name);
+        const { items, moodColor } = await searchGlobalTop(country.name, 0); // Pasamos offset 0
         setPlaylistResult(items); setAiInterpretation(`Explorando ${country.name} ${country.flag}`); setBgColor(moodColor);
     } catch (err) { setError("Error viajando."); } finally { setLoading(false); }
   };
@@ -107,21 +124,27 @@ export default function Html() {
     setLoading(true); setError(""); setPlaylistResult([]); setTrackResult([]); setAiInterpretation(""); setArtistResult(null); setSearchTerm(term);
     setShowHistory(false);
     
+    // --- NUEVO: RESETEO OFFSET Y HASMORE ---
+    setOffset(0);
+    setHasMore(true);
+    const initialOffset = 0;
+    // --------------------------------------
+
     if (mode === "favorites" || mode === "travel") setMode("mood");
     
     try {
       if (mode === "artist") {
         setBgColor(darkMode ? "#1a1a1a" : "#ffffff");
-        const data = await searchArtistsAndTracks(term);
+        const data = await searchArtistsAndTracks(term, initialOffset);
         if (data.tracks.length > 0) { setArtistResult(data); addToHistory(term); } 
         else { setError(`No encontramos a ${data.artistName}.`); }
       } else if (mode === "song") {
         setBgColor(darkMode ? "#1a1a1a" : "#ffffff");
-        const data = await searchTracks(term);
+        const data = await searchTracks(term, initialOffset);
         if (data.tracks.length > 0) { setTrackResult(data.tracks); addToHistory(term); }
         else { setError("No encontramos esa canción."); }
       } else {
-        const { items, aiTerms, moodColor } = await searchPlaylistsByMood(term);
+        const { items, aiTerms, moodColor } = await searchPlaylistsByMood(term, initialOffset);
         if (moodColor) setBgColor(moodColor);
         if (aiTerms && aiTerms.toLowerCase() !== term.toLowerCase()) setAiInterpretation(aiTerms);
         if (items.length > 0) { setPlaylistResult(items); addToHistory(term); } 
@@ -129,6 +152,61 @@ export default function Html() {
       }
     } catch (err) { setError("Error de conexión."); } finally { setLoading(false); }
   };
+
+  // --- NUEVA FUNCIÓN: CARGAR MÁS ---
+  const handleLoadMore = async () => {
+    if (loading || !hasMore) return;
+    setLoading(true);
+    const nextOffset = offset + 20; // Asumimos saltos de 20
+    const term = searchTerm || (mode === 'travel' ? aiInterpretation.split(" ")[1] : ""); // Recuperar término si es viaje
+
+    try {
+        let newItems = [];
+        if (mode === "artist") {
+            const data = await searchArtistsAndTracks(searchTerm, nextOffset);
+            if (data && data.tracks.length > 0) {
+                setArtistResult(prev => ({...prev, tracks: [...prev.tracks, ...data.tracks]}));
+                newItems = data.tracks;
+            }
+        } else if (mode === "song") {
+            const data = await searchTracks(searchTerm, nextOffset);
+            if (data && data.tracks.length > 0) {
+                setTrackResult(prev => [...prev, ...data.tracks]);
+                newItems = data.tracks;
+            }
+        } else if (mode === "mood") {
+            // Nota: Para mood a veces requerimos el término AI, usaremos searchTerm por defecto
+            const { items } = await searchPlaylistsByMood(searchTerm || aiInterpretation, nextOffset);
+            if (items && items.length > 0) {
+                setPlaylistResult(prev => [...prev, ...items]);
+                newItems = items;
+            }
+        } else if (mode === "travel") {
+             // Extraer nombre del país del estado actual si es necesario, o usar searchTerm
+             const countryName = searchTerm.replace("Top ", ""); 
+             const { items } = await searchGlobalTop(countryName, nextOffset);
+             if (items && items.length > 0) {
+                setPlaylistResult(prev => [...prev, ...items]);
+                newItems = items;
+            }
+        }
+
+        if (newItems.length === 0) {
+            setHasMore(false);
+            setToastMessage("No hay más resultados 🛑");
+            setShowToast(true); setTimeout(() => setShowToast(false), 2000);
+        } else {
+            setOffset(nextOffset);
+        }
+
+    } catch (err) {
+        console.error("Error cargando más", err);
+        setHasMore(false);
+    } finally {
+        setLoading(false);
+    }
+  };
+  // --------------------------------
 
   const handleSearch = (e) => { e.preventDefault(); if(searchTerm.trim()) performSearch(searchTerm); };
   
@@ -157,41 +235,16 @@ export default function Html() {
     recognition.start();
   };
 
-  // --- NUEVA FUNCIÓN PARA COMPARTIR ---
   const handleShare = async (e, item) => {
-    e.stopPropagation(); // Evita que se reproduzca o abra el item al hacer click
-    
-    // Obtenemos el link correcto (Spotify o preview)
+    e.stopPropagation(); 
     const shareUrl = item.external_urls?.spotify || item.externalUrl || item.previewUrl;
-    
-    const shareData = {
-        title: `Escucha ${item.name} en Tam IA`,
-        text: `¡Mira esta canción que encontré: "${item.name}" de ${item.artist}! 🎵`,
-        url: shareUrl
-    };
-
-    // Usamos la API nativa del navegador si está disponible (Celulares y navegadores modernos)
+    const shareData = { title: `Escucha ${item.name} en Tam IA`, text: `¡Mira esta canción que encontré: "${item.name}" de ${item.artist}! 🎵`, url: shareUrl };
     if (navigator.share) {
-        try {
-            await navigator.share(shareData);
-            setToastMessage("¡Compartido con éxito! 🚀");
-            setShowToast(true); setTimeout(() => setShowToast(false), 2000);
-        } catch (err) {
-            console.log("El usuario canceló compartir", err);
-        }
+        try { await navigator.share(shareData); setToastMessage("¡Compartido con éxito! 🚀"); setShowToast(true); setTimeout(() => setShowToast(false), 2000); } catch (err) { console.log("Cancelado", err); }
     } else {
-        // Fallback para PC o navegadores viejos: Copiar al portapapeles
-        try {
-            await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
-            setToastMessage("Enlace copiado al portapapeles 📋");
-            setShowToast(true); setTimeout(() => setShowToast(false), 2000);
-        } catch (err) {
-            setToastMessage("No se pudo compartir ❌");
-            setShowToast(true); setTimeout(() => setShowToast(false), 2000);
-        }
+        try { await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`); setToastMessage("Enlace copiado al portapapeles 📋"); setShowToast(true); setTimeout(() => setShowToast(false), 2000); } catch (err) { setToastMessage("No se pudo compartir ❌"); setShowToast(true); setTimeout(() => setShowToast(false), 2000); }
     }
   };
-  // -------------------------------------
 
   const theme = {
     text: darkMode ? '#fff' : '#222',
@@ -233,11 +286,16 @@ export default function Html() {
     queueBtn: { position: 'absolute', top: '20px', right: '20px', background: 'rgba(0,0,0,0.6)', border: '1px solid #00FF88', color: '#00FF88', padding: '8px 15px', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', zIndex: 5 },
     queueContainer: { position: 'fixed', top: 0, right: 0, width: '300px', height: '100%', background: darkMode ? '#111' : '#fff', boxShadow: '-5px 0 20px rgba(0,0,0,0.5)', padding: '20px', zIndex: 2500, overflowY: 'auto', transition: 'transform 0.3s ease', transform: showQueue ? 'translateX(0)' : 'translateX(100%)' },
     queueItem: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', padding: '8px', borderRadius: '8px', background: theme.cardBg },
-    queueImg: { width: '40px', height: '40px', borderRadius: '4px' }
+    queueImg: { width: '40px', height: '40px', borderRadius: '4px' },
+    // --- NUEVO ESTILO ---
+    loadMoreBtn: { display: 'block', margin: '20px auto', padding: '10px 30px', background: 'transparent', border: '1px solid #00FF88', color: theme.text, borderRadius: '25px', cursor: 'pointer', fontWeight: 'bold', transition: '0.3s' }
   };
 
   const renderLoader = () => (<div style={styles.loaderContainer}><div style={styles.bar(0)}></div><div style={styles.bar(0.1)}></div><div style={styles.bar(0.2)}></div></div>);
   const renderEmptyState = () => (<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: darkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)', textAlign: 'center', padding: '20px' }}><div style={{ fontSize: '2.5rem', marginBottom: '10px', opacity: 0.3 }}>🎵</div><h3 style={{ fontSize: '1.1rem', fontWeight: '300', marginBottom: '5px', color: theme.text }}>Tu música te espera</h3><p style={{ fontSize: '0.85rem', color: theme.subText }}>Escribe, habla o sube una foto.</p></div>);
+
+  // Variable auxiliar para saber si hay resultados visibles
+  const hasResults = playlistResult.length > 0 || trackResult.length > 0 || (artistResult && artistResult.tracks && artistResult.tracks.length > 0);
 
   return (
     <div className="page-container" style={styles.pageContainer}>
@@ -321,45 +379,48 @@ export default function Html() {
 
             <div className="right-section" style={styles.rightSection}>
                 <div className="results-overlay">
-                    {loading && renderLoader()}
+                    {loading && playlistResult.length === 0 && !artistResult && trackResult.length === 0 && renderLoader()} 
+                    
                     {!loading && aiInterpretation && mode === "mood" && <div style={{marginTop:'15px',textAlign:'center'}}><span style={styles.aiText}>🤖 {aiInterpretation}</span></div>}
                     
-                    {!loading && (
+                    {(playlistResult.length > 0 || trackResult.length > 0 || (artistResult && artistResult.tracks) || (mode === "favorites" && favorites.length > 0)) && (
                         <div style={{ marginTop: '15px', animation: 'fadeInUp 0.5s', width: '100%' }}>
-                            {(playlistResult.length > 0 || trackResult.length > 0 || (artistResult && artistResult.tracks) || (mode === "favorites" && favorites.length > 0)) && (
-                                <div style={styles.gridContainer}>
-                                    {(artistResult ? artistResult.tracks : mode === "song" ? trackResult : mode === "favorites" ? favorites : playlistResult).map((item) => {
-                                        const isLiked = favorites.some(fav => fav.id === item.id);
-                                        const isTrack = item.previewUrl !== undefined || item.type === 'track' || artistResult || mode === "song";
-                                        const image = item.albumImage || (item.images ? item.images[0]?.url : null) || "https://via.placeholder.com/150";
-                                        return (
-                                            <div key={item.id} style={styles.trackCard}>
-                                                <div style={{position:'relative', width:'100%', marginBottom:'8px'}}>
-                                                    <img src={image} alt={item.name} style={styles.trackImage} />
-                                                    <div style={styles.floatingActions}>
-                                                        {isTrack && <button onClick={(e) => addToQueue(e, {...item, albumImage: image})} style={styles.miniBtn(false, 'white')} title="Añadir a Cola">+</button>}
-                                                        <button onClick={(e) => toggleFavorite(e, item, isTrack ? 'track' : 'playlist')} style={styles.miniBtn(isLiked, '#FF4081')}>{isLiked ? '❤️' : '🤍'}</button>
-                                                        
-                                                        {/* NUEVO BOTÓN DE COMPARTIR */}
-                                                        <button onClick={(e) => handleShare(e, item)} style={{...styles.miniBtn(false, 'white'), marginLeft:'4px'}} title="Compartir">
-                                                            ↗️
-                                                        </button>
-                                                        {/* ------------------------- */}
-                                                        
-                                                    </div>
-                                                </div>
-                                                <div style={{width:'100%', textAlign:'center'}}>
-                                                    <div style={{ fontWeight: '600', fontSize: '0.8rem', marginBottom: '6px', color: theme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.name}>{item.name}</div>
-                                                    <div style={{fontSize:'0.7rem', color: theme.subText, marginBottom:'5px'}}>{item.artist}</div>
-                                                    {isTrack ? (<button onClick={() => playTrack(item)} style={styles.linkBtnFull}>{currentTrack?.id === item.id ? '🔊' : '▶️ Play'}</button>) : (<a href={item.external_urls?.spotify} target="_blank" rel="noreferrer" style={styles.linkBtnFull}>Abrir ↗</a>)}
+                            <div style={styles.gridContainer}>
+                                {(artistResult ? artistResult.tracks : mode === "song" ? trackResult : mode === "favorites" ? favorites : playlistResult).map((item) => {
+                                    const isLiked = favorites.some(fav => fav.id === item.id);
+                                    const isTrack = item.previewUrl !== undefined || item.type === 'track' || artistResult || mode === "song";
+                                    const image = item.albumImage || (item.images ? item.images[0]?.url : null) || "https://via.placeholder.com/150";
+                                    return (
+                                        <div key={item.id} style={styles.trackCard}>
+                                            <div style={{position:'relative', width:'100%', marginBottom:'8px'}}>
+                                                <img src={image} alt={item.name} style={styles.trackImage} />
+                                                <div style={styles.floatingActions}>
+                                                    {isTrack && <button onClick={(e) => addToQueue(e, {...item, albumImage: image})} style={styles.miniBtn(false, 'white')} title="Añadir a Cola">+</button>}
+                                                    <button onClick={(e) => toggleFavorite(e, item, isTrack ? 'track' : 'playlist')} style={styles.miniBtn(isLiked, '#FF4081')}>{isLiked ? '❤️' : '🤍'}</button>
+                                                    <button onClick={(e) => handleShare(e, item)} style={{...styles.miniBtn(false, 'white'), marginLeft:'4px'}} title="Compartir">↗️</button>
                                                 </div>
                                             </div>
-                                        );
-                                    })}
-                                </div>
+                                            <div style={{width:'100%', textAlign:'center'}}>
+                                                <div style={{ fontWeight: '600', fontSize: '0.8rem', marginBottom: '6px', color: theme.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.name}>{item.name}</div>
+                                                <div style={{fontSize:'0.7rem', color: theme.subText, marginBottom:'5px'}}>{item.artist}</div>
+                                                {isTrack ? (<button onClick={() => playTrack(item)} style={styles.linkBtnFull}>{currentTrack?.id === item.id ? '🔊' : '▶️ Play'}</button>) : (<a href={item.external_urls?.spotify} target="_blank" rel="noreferrer" style={styles.linkBtnFull}>Abrir ↗</a>)}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* --- NUEVO: BOTÓN DE CARGAR MÁS --- */}
+                            {hasMore && mode !== 'favorites' && hasResults && !loading && (
+                                <button onClick={handleLoadMore} style={styles.loadMoreBtn}>
+                                    ➕ Cargar más
+                                </button>
                             )}
+                            {loading && hasResults && renderLoader()}
+                            {/* ---------------------------------- */}
                         </div>
                     )}
+                    
                     {!loading && !playlistResult.length && !trackResult.length && !artistResult && mode !== 'favorites' && !error && renderEmptyState()}
                 </div>
             </div>
@@ -383,7 +444,6 @@ export default function Html() {
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
         body { margin: 0; font-family: 'Poppins', sans-serif; background: ${darkMode ? '#000' : '#f0f2f5'}; overflow-x: hidden; color: ${darkMode ? '#fff' : '#222'}; transition: background 0.3s; }
         
-        /* Estilos Base (Desktop) movidos aquí para permitir overrides */
         .page-container {
             display: flex;
             justify-content: center;
@@ -431,7 +491,6 @@ export default function Html() {
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .pulse { animation: dance 1s infinite; }
 
-        /* DISEÑO RESPONSIVO CORREGIDO */
         @media (max-width: 850px) {
             .page-container {
                 padding: 10px;
@@ -446,7 +505,7 @@ export default function Html() {
                 max-height: none !important; 
                 overflow: visible;
                 margin-top: 20px;
-                margin-bottom: 80px; /* Espacio para el player */
+                margin-bottom: 80px; 
             }
 
             .left-section { 
@@ -454,7 +513,7 @@ export default function Html() {
                 min-height: auto; 
                 width: 100%; 
                 box-sizing: border-box; 
-                min-width: 0; /* Fix flexbox overflow */
+                min-width: 0; 
             }
 
             .right-section { 
@@ -467,11 +526,7 @@ export default function Html() {
             .tab-container { justify-content: center; }
             .search-form { max-width: 100%; }
             .diceBtn { margin-right: auto; margin-left: 0; }
-            
-            /* Ajuste de la cola en móvil */
             .queue-container { width: 85% !important; max-width: 300px; }
-            
-            /* Ajuste de botones en móvil */
             .flagGrid { grid-template-columns: repeat(3, 1fr) !important; }
         }
         
