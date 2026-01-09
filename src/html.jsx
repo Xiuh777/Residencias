@@ -154,49 +154,62 @@ export default function Html() {
   };
 
   // --- NUEVA FUNCIÓN: CARGAR MÁS ---
+  // Busca esta función dentro de tu Html.js y cámbiala por esta:
   const handleLoadMore = async () => {
     if (loading || !hasMore) return;
     setLoading(true);
-    const nextOffset = offset + 20; // Asumimos saltos de 20
-    const term = searchTerm || (mode === 'travel' ? aiInterpretation.split(" ")[1] : ""); // Recuperar término si es viaje
+    const nextOffset = offset + 20; 
+    
+    // Si estamos en modo "viajes", usamos el país. Si no, lo que escribiste.
+    const termToUse = mode === 'travel' ? (aiInterpretation ? aiInterpretation.split(" ")[1] : "Mexico") : searchTerm;
 
     try {
         let newItems = [];
+        
+        // 1. Pedimos los datos nuevos a Spotify
         if (mode === "artist") {
-            const data = await searchArtistsAndTracks(searchTerm, nextOffset);
-            if (data && data.tracks.length > 0) {
-                setArtistResult(prev => ({...prev, tracks: [...prev.tracks, ...data.tracks]}));
-                newItems = data.tracks;
-            }
+            const data = await searchArtistsAndTracks(termToUse, nextOffset);
+            if (data && data.tracks.length > 0) newItems = data.tracks;
         } else if (mode === "song") {
-            const data = await searchTracks(searchTerm, nextOffset);
-            if (data && data.tracks.length > 0) {
-                setTrackResult(prev => [...prev, ...data.tracks]);
-                newItems = data.tracks;
-            }
+            const data = await searchTracks(termToUse, nextOffset);
+            if (data && data.tracks.length > 0) newItems = data.tracks;
         } else if (mode === "mood") {
-            // Nota: Para mood a veces requerimos el término AI, usaremos searchTerm por defecto
-            const { items } = await searchPlaylistsByMood(searchTerm || aiInterpretation, nextOffset);
-            if (items && items.length > 0) {
-                setPlaylistResult(prev => [...prev, ...items]);
-                newItems = items;
-            }
+            // En mood a veces la búsqueda es la interpretación de la IA
+            const query = searchTerm || aiInterpretation;
+            const { items } = await searchPlaylistsByMood(query, nextOffset);
+            if (items && items.length > 0) newItems = items;
         } else if (mode === "travel") {
-             // Extraer nombre del país del estado actual si es necesario, o usar searchTerm
              const countryName = searchTerm.replace("Top ", ""); 
              const { items } = await searchGlobalTop(countryName, nextOffset);
-             if (items && items.length > 0) {
-                setPlaylistResult(prev => [...prev, ...items]);
-                newItems = items;
-            }
+             if (items && items.length > 0) newItems = items;
         }
 
-        if (newItems.length === 0) {
-            setHasMore(false);
-            setToastMessage("No hay más resultados 🛑");
-            setShowToast(true); setTimeout(() => setShowToast(false), 2000);
+        // 2. FILTRO DE SEGURIDAD (Esto evita que se repitan en pantalla)
+        if (newItems.length > 0) {
+            
+            // Esta mini-función compara IDs y solo deja pasar los nuevos
+            const mergeUnique = (prev, next) => {
+                const prevIds = new Set(prev.map(i => i.id));
+                const uniqueNext = next.filter(i => !prevIds.has(i.id));
+                return [...prev, ...uniqueNext];
+            };
+
+            if (mode === "artist") {
+                setArtistResult(prev => ({
+                    ...prev, 
+                    tracks: mergeUnique(prev.tracks, newItems)
+                }));
+            } else if (mode === "song") {
+                setTrackResult(prev => mergeUnique(prev, newItems));
+            } else {
+                setPlaylistResult(prev => mergeUnique(prev, newItems));
+            }
+
+            setOffset(nextOffset); // Guardamos que ya avanzamos de página
         } else {
-            setOffset(nextOffset);
+            setHasMore(false); // Ya no hay más música, ocultamos el botón
+            setToastMessage("Ya no hay más resultados 🛑");
+            setShowToast(true); setTimeout(() => setShowToast(false), 2000);
         }
 
     } catch (err) {
