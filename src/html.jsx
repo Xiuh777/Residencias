@@ -30,18 +30,12 @@ export default function Html() {
 
   const countries = [ { code: "MX", name: "México", flag: "🇲🇽" }, { code: "ES", name: "España", flag: "🇪🇸" }, { code: "US", name: "USA", flag: "🇺🇸" }, { code: "BR", name: "Brasil", flag: "🇧🇷" }, { code: "KR", name: "Corea", flag: "🇰🇷" }, { code: "JP", name: "Japón", flag: "🇯🇵" }, { code: "CO", name: "Colombia", flag: "🇨🇴" }, { code: "AR", name: "Argentina", flag: "🇦🇷" } ];
 
-  // --- LISTA GIGANTE DE PROMPTS ALEATORIOS ---
   const randomPrompts = [
     "Ciberpunk hacker a las 3 AM", "Cena romántica italiana con vino", "Entrenamiento bestial modo bestia", 
     "Domingo de limpieza con energía", "Lluvia melancólica en la ventana", "Roadtrip por la costa de California", 
     "Fiesta en la piscina años 80", "Meditación en un templo zen", "Café parisino por la mañana", 
     "Vaquero espacial en Marte", "Noche de jazz en Nueva York 1950", "Perreo intenso hasta el suelo", 
-    "Estudiando física cuántica lo-fi", "Caminata por el bosque mágico", "Batalla épica de videojuego final", 
-    "Desayuno con diamantes elegante", "Picnic en primavera con flores", "Conduciendo en Tokio de noche (Drift)", 
-    "Tarde de lluvia y libros antiguos", "Fiesta de Halloween terrorífica", "Navidad acogedora frente a la chimenea", 
-    "Festival de música electrónica en la playa", "Detective privado en película Noir", "Viaje psicodélico años 60", 
-    "Entrando al ring de boxeo", "Amanecer en la montaña sagrada", "Caos en la cocina preparando cena", 
-    "Amor a primera vista en el metro", "Soledad en una estación espacial", "Rave en un búnker subterráneo"
+    "Estudiando física cuántica lo-fi", "Caminata por el bosque mágico", "Batalla épica de videojuego final"
   ];
 
   useEffect(() => {
@@ -79,24 +73,22 @@ export default function Html() {
   };
   const closePlayer = () => { if(audioRef.current) audioRef.current.pause(); setCurrentTrack(null); };
 
-  // --- LÓGICA DE FOTOS (AQUÍ OCURRE LA MAGIA) ---
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setLoading(true);
-    setSearchTerm("Analizando imagen... 📸"); // Feedback visual
+    setSearchTerm("Analizando imagen... 📸"); 
     const reader = new FileReader();
     reader.onloadend = async () => {
         try {
-            // Enviamos la imagen (reader.result es el Base64) al backend
             const result = await analyzeImageAndSearch(reader.result);
             if (result) {
                 setMode("mood"); 
                 setPlaylistResult(result.items); 
-                setAiInterpretation(result.aiInterpretation); // Descripción de la IA
-                if (result.moodColor) setBgColor(result.moodColor); // Color extraído
+                setAiInterpretation(result.aiInterpretation);
+                if (result.moodColor) setBgColor(result.moodColor);
                 addToHistory("📸 Búsqueda Visual");
-                setSearchTerm(""); // Limpiar
+                setSearchTerm("");
             } else { setError("No pude entender la imagen."); }
         } catch (err) { setError("Error al analizar imagen."); } finally { setLoading(false); }
     };
@@ -139,6 +131,7 @@ export default function Html() {
   };
 
   const handleSearch = (e) => { e.preventDefault(); if(searchTerm.trim()) performSearch(searchTerm); };
+  
   const toggleFavorite = (e, item, type) => {
     e.stopPropagation(); e.preventDefault();
     const exists = favorites.find(fav => fav.id === item.id);
@@ -164,6 +157,42 @@ export default function Html() {
     recognition.start();
   };
 
+  // --- NUEVA FUNCIÓN PARA COMPARTIR ---
+  const handleShare = async (e, item) => {
+    e.stopPropagation(); // Evita que se reproduzca o abra el item al hacer click
+    
+    // Obtenemos el link correcto (Spotify o preview)
+    const shareUrl = item.external_urls?.spotify || item.externalUrl || item.previewUrl;
+    
+    const shareData = {
+        title: `Escucha ${item.name} en Tam IA`,
+        text: `¡Mira esta canción que encontré: "${item.name}" de ${item.artist}! 🎵`,
+        url: shareUrl
+    };
+
+    // Usamos la API nativa del navegador si está disponible (Celulares y navegadores modernos)
+    if (navigator.share) {
+        try {
+            await navigator.share(shareData);
+            setToastMessage("¡Compartido con éxito! 🚀");
+            setShowToast(true); setTimeout(() => setShowToast(false), 2000);
+        } catch (err) {
+            console.log("El usuario canceló compartir", err);
+        }
+    } else {
+        // Fallback para PC o navegadores viejos: Copiar al portapapeles
+        try {
+            await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
+            setToastMessage("Enlace copiado al portapapeles 📋");
+            setShowToast(true); setTimeout(() => setShowToast(false), 2000);
+        } catch (err) {
+            setToastMessage("No se pudo compartir ❌");
+            setShowToast(true); setTimeout(() => setShowToast(false), 2000);
+        }
+    }
+  };
+  // -------------------------------------
+
   const theme = {
     text: darkMode ? '#fff' : '#222',
     subText: darkMode ? '#e0e0e0' : '#555',
@@ -177,38 +206,16 @@ export default function Html() {
     historyBg: darkMode ? '#2a2a2a' : '#fff'
   };
 
-  // --- MODIFICACIÓN RESPONSIVA: Separe los estilos de layout de los estilos visuales ---
   const styles = {
-    // Layout movido a CSS (.page-container)
-    pageContainer: { 
-        minHeight: '100vh', 
-        background: `radial-gradient(circle at top left, ${bgColor} 0%, ${theme.bgGradient} 80%)`, 
-        color: theme.text,
-        transition: 'background 1.5s ease'
-    },
-    // Layout movido a CSS (.hero-container)
-    heroContainer: { 
-        background: theme.heroBg, 
-        backdropFilter: 'blur(20px)', 
-        borderRadius: '24px', 
-        border: `1px solid ${bgColor}40`, 
-        boxShadow: `0 20px 60px ${theme.shadow}, 0 0 30px ${bgColor}20`, 
-        transition: 'border-color 1.5s ease, box-shadow 1.5s ease, background 0.5s' 
-    },
-    // Layout movido a CSS (.right-section)
-    rightSection: { 
-        background: `linear-gradient(to bottom right, ${bgColor}60, ${theme.rightSectionOverlay}), url('https://source.unsplash.com/random/800x800/?abstract,music') center/cover no-repeat`, 
-        transition: 'background 1.5s ease',
-        position: 'relative', 
-        overflow: 'hidden' 
-    },
+    pageContainer: { minHeight: '100vh', background: `radial-gradient(circle at top left, ${bgColor} 0%, ${theme.bgGradient} 80%)`, color: theme.text, transition: 'background 1.5s ease' },
+    heroContainer: { background: theme.heroBg, backdropFilter: 'blur(20px)', borderRadius: '24px', border: `1px solid ${bgColor}40`, boxShadow: `0 20px 60px ${theme.shadow}, 0 0 30px ${bgColor}20`, transition: 'border-color 1.5s ease, box-shadow 1.5s ease, background 0.5s' },
+    rightSection: { background: `linear-gradient(to bottom right, ${bgColor}60, ${theme.rightSectionOverlay}), url('https://source.unsplash.com/random/800x800/?abstract,music') center/cover no-repeat`, transition: 'background 1.5s ease', position: 'relative', overflow: 'hidden' },
     loaderContainer: { display: 'flex', gap: '4px', justifyContent: 'center', margin: '30px 0' },
     bar: (delay) => ({ width: '5px', height: '15px', backgroundColor: '#00FF88', borderRadius: '10px', animation: `dance 1s infinite ease-in-out ${delay}s` }),
     diceBtn: { background: theme.inputBg, border: `1px solid ${theme.borderColor}`, borderRadius: '15px', color: theme.subText, padding: '6px 12px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', marginLeft: 'auto', marginBottom: '15px', transition: '0.2s' },
     gridContainer: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '15px', marginTop: '20px', width: '100%' },
     trackCard: { position: 'relative', backgroundColor: theme.cardBg, padding: '10px', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', border: `1px solid ${theme.borderColor}`, transition: 'transform 0.2s', height: '100%', justifyContent: 'space-between' },
     trackImage: { width: '100%', aspectRatio: '1/1', borderRadius: '8px', objectFit: 'cover', marginBottom: '8px', boxShadow: `0 4px 8px ${theme.shadow}` },
-    playlistName: { fontSize: '0.8rem', fontWeight: '600', lineHeight: '1.2', margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', color: theme.text, textAlign: 'center' },
     miniBtn: (isActive, color) => ({ width: '28px', height: '28px', borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', color: isActive ? color : 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', transition: '0.2s' }),
     floatingActions: { position: 'absolute', top: '6px', right: '6px', display: 'flex', gap: '4px' },
     linkBtnFull: { display: 'block', width: '100%', textAlign: 'center', marginTop: '8px', fontSize: '0.75rem', color: '#00FF88', textDecoration: 'none', border: '1px solid #00FF88', padding: '6px 0', borderRadius: '15px', fontWeight: '600', transition: '0.3s', cursor: 'pointer', background: 'transparent' },
@@ -220,7 +227,6 @@ export default function Html() {
     aiText: { color: theme.text, fontSize: '0.85rem', marginBottom: '15px', fontStyle: 'italic', backgroundColor: theme.cardBg, padding: '6px 12px', borderRadius: '20px', display: 'inline-block', backdropFilter: 'blur(5px)', borderLeft: `3px solid ${bgColor}` },
     flagGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '20px' },
     flagBtn: { fontSize: '1.8rem', background: theme.cardBg, border: 'none', borderRadius: '12px', padding: '10px', cursor: 'pointer', transition: '0.2s', display:'flex', justifyContent:'center', alignItems:'center' },
-    errorMsg: { color: '#ff6b6b', marginTop: '10px', fontSize:'0.8rem', backgroundColor: 'rgba(255,0,0,0.1)', padding: '5px 10px', borderRadius: '8px', display: 'inline-block' },
     inputWrapper: { position: 'relative', display: 'flex', alignItems: 'center', backgroundColor: theme.inputBg, borderRadius: '25px', border: `1px solid ${theme.borderColor}`, flex: 1, paddingRight: '5px' },
     input: { padding: '10px 15px', border: 'none', flex: '1', background: 'transparent', color: theme.text, outline: 'none', fontSize: '0.9rem', minWidth: 0 },
     tabBtn: (isActive) => ({ padding: '6px 14px', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', background: isActive ? '#00FF88' : theme.inputBg, color: isActive ? '#000' : theme.text, transition: '0.3s', boxShadow: isActive ? '0 4px 10px rgba(0,255,136,0.3)' : 'none' }),
@@ -333,6 +339,13 @@ export default function Html() {
                                                     <div style={styles.floatingActions}>
                                                         {isTrack && <button onClick={(e) => addToQueue(e, {...item, albumImage: image})} style={styles.miniBtn(false, 'white')} title="Añadir a Cola">+</button>}
                                                         <button onClick={(e) => toggleFavorite(e, item, isTrack ? 'track' : 'playlist')} style={styles.miniBtn(isLiked, '#FF4081')}>{isLiked ? '❤️' : '🤍'}</button>
+                                                        
+                                                        {/* NUEVO BOTÓN DE COMPARTIR */}
+                                                        <button onClick={(e) => handleShare(e, item)} style={{...styles.miniBtn(false, 'white'), marginLeft:'4px'}} title="Compartir">
+                                                            ↗️
+                                                        </button>
+                                                        {/* ------------------------- */}
+                                                        
                                                     </div>
                                                 </div>
                                                 <div style={{width:'100%', textAlign:'center'}}>
