@@ -4,7 +4,7 @@ const getBackendUrl = () => {
 };
 const BASE_URL = getBackendUrl();
 
-// Función de mezcla (Solo la usaremos si es la primera página para variar un poco)
+// Función de mezcla
 const shuffleArray = (array) => array.sort(() => Math.random() - 0.5);
 
 export async function getAccessToken() {
@@ -35,16 +35,17 @@ export async function analyzeImageAndSearch(imageBase64) {
             body: JSON.stringify({ imageBase64 })
         });
         const data = await res.json();
-        // Offset 0 para imagen nueva
         const searchRes = await searchPlaylistsByMood(data.searchTerms, 0, true);
         return { ...searchRes, aiInterpretation: data.moodDescription, moodColor: data.hexColor };
     } catch (error) { return null; }
 }
 
-// --- FUNCIÓN CENTRAL ACTUALIZADA ---
-// Ahora acepta 'offset' y eliminamos el randomOffset para que 'Cargar más' traiga cosas nuevas
+// --- CORRECCIÓN PRINCIPAL AQUÍ (Faltaban los $) ---
 async function fetchSpotify(token, query, type = 'playlist', limit = 20, offset = 0) {
-    const url = `https://api.spotify.com/v1/search?q=$/search?q=${encodeURIComponent(query)}&type=${type}&limit=${limit}&offset=${offset}`;
+    // CORREGIDO: ${encodeURIComponent(query)} en lugar de {encodeURIComponent(query)}
+    // CORREGIDO: URL oficial de Spotify https://api.spotify.com/v1/search
+    const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=${limit}&offset=${offset}`;
+    
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return [];
     const data = await res.json();
@@ -53,8 +54,7 @@ async function fetchSpotify(token, query, type = 'playlist', limit = 20, offset 
     return data.tracks?.items.filter(item => item !== null) || [];
 }
 
-// MOOD (Con Paginación)
-// Orden de args cambiado para coincidir con React: (query, offset, skipAI)
+// MOOD
 export async function searchPlaylistsByMood(query, offset = 0, skipAI = false) {
   const token = await getAccessToken();
   if (!token) throw new Error("No token");
@@ -63,61 +63,66 @@ export async function searchPlaylistsByMood(query, offset = 0, skipAI = false) {
     let searchTerms = query;
     let hexColor = "#1db954";
 
-    // Solo consultamos a la IA en la primera página (offset 0) y si no se salta
     if (!skipAI && offset === 0) {
         const aiData = await getAIRecommendation(query);
         searchTerms = aiData.searchTerms || query;
         hexColor = aiData.hexColor || "#1db954";
     }
     
-    // Pasamos el offset a la función fetch
     let items = await fetchSpotify(token, searchTerms, 'playlist', 20, offset);
 
-    // Fallback si la IA falló, solo en primera página
     if (items.length === 0 && searchTerms !== query && offset === 0) {
         items = await fetchSpotify(token, query, 'playlist', 20, 0);
     }
 
-    // Solo mezclamos si es la primera página, para paginación necesitamos orden estable
     if (offset === 0) items = shuffleArray(items);
 
     return { items: items, aiTerms: searchTerms, moodColor: hexColor };
   } catch (error) { return { items: [], aiTerms: query, moodColor: "#1db954" }; }
 }
 
-// ARTISTA (Híbrido: Top Tracks + Busqueda paginada)
+// --- AQUÍ ESTABA EL ERROR DEL CANTANTE ---
 export async function searchArtistsAndTracks(query, offset = 0) {
   const token = await getAccessToken();
   if (!token) throw new Error("No token");
   try {
-    // 1. Si es "Cargar más" (offset > 0), buscamos canciones del artista directamente
-    // porque el endpoint "Top Tracks" NO tiene paginación.
+    // 1. Paginación: Si es cargar más, buscamos canciones del artista
     if (offset > 0) {
-         // Buscamos tracks donde el artista sea 'query'
+         // CORREGIDO: Añadido el $ antes de {query}
          const moreTracks = await fetchSpotify(token, `artist:${query}`, 'track', 20, offset);
          return { artistName: query, tracks: moreTracks };
     }
 
-    // 2. Si es la primera búsqueda (offset 0), hacemos la lógica bonita de Artist + Top Tracks
-    const artistRes = await fetch(`https://api.spotify.com/v1/search?q=$/search?q=${encodeURIComponent(query)}&type=artist&limit=1`, { headers: { Authorization: `Bearer ${token}` } });
+    // 2. Primera búsqueda: Buscar ID del artista
+    // CORREGIDO: Añadido el $ y URL oficial
+    const artistRes = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=1`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+    });
+    
     const artistData = await artistRes.json();
     const artistItem = artistData.artists?.items?.[0];
     
     if (!artistItem) return { artistName: query, tracks: [] };
 
-    const tracksRes = await fetch(`https://api.spotify.com/v1/search?q=$/artists/${artistItem.id}/top-tracks?market=US`, { headers: { Authorization: `Bearer ${token}` } });
+    // 3. Obtener Top Tracks del artista
+    // CORREGIDO: Añadido el $ antes de {artistItem.id}
+    const tracksRes = await fetch(`https://api.spotify.com/v1/artists/${artistItem.id}/top-tracks?market=US`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+    });
     const tracksData = await tracksRes.json();
 
     return { artistName: artistItem.name, tracks: tracksData.tracks || [] };
-  } catch (error) { return { artistName: query, tracks: [] }; }
+  } catch (error) { 
+      console.error(error);
+      return { artistName: query, tracks: [] }; 
+  }
 }
 
-// CANCIONES (Con Paginación)
+// CANCIONES
 export async function searchTracks(query, offset = 0) {
   const token = await getAccessToken();
   if (!token) throw new Error("No token");
   try {
-    // Pasamos offset
     const tracks = await fetchSpotify(token, query, 'track', 20, offset);
     
     const formattedTracks = tracks.map(t => ({
@@ -133,6 +138,5 @@ export async function searchTracks(query, offset = 0) {
 }
 
 export async function searchGlobalTop(countryCode, offset = 0) {
-    // Pasamos offset y skipAI=true
     return searchPlaylistsByMood(`Top 50 ${countryCode}`, offset, true);
 }
